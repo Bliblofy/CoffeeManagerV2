@@ -304,104 +304,30 @@ sudo systemctl enable coffee-wifi-manager.service
 sudo systemctl start coffee-wifi-manager.service
 ```
 
-### **5. iPhone Hotspot Configuration (Recommended)**
+### **5. WiFi Management Commands**
 ```bash
-# Create hotspot configuration files
-sudo tee /etc/dhcpcd.conf.hotspot > /dev/null << 'EOF'
-# Fixed IP configuration for iPhone hotspot
-interface wlan0
-static ip_address=192.168.1.100/24
-static routers=192.168.1.1
-static domain_name_servers=8.8.8.8 8.8.4.4
-EOF
+# Check WiFi manager status
+sudo systemctl status coffee-wifi-manager.service
 
-# Backup original configuration
-sudo cp /etc/dhcpcd.conf /etc/dhcpcd.conf.backup
-
-# Make scripts executable
-sudo chmod +x switch_to_hotspot.sh switch_to_home_wifi.sh auto_wifi_manager.py
-
-# Create auto WiFi manager systemd service
-sudo tee /etc/systemd/system/coffee-auto-wifi.service > /dev/null << 'EOF'
-[Unit]
-Description=Coffee Pi Auto WiFi Manager
-After=network.target
-Wants=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/home/coffeelover/CoffeeManager
-ExecStart=/usr/bin/python3 /home/coffeelover/CoffeeManager/auto_wifi_manager.py
-Restart=always
-RestartSec=30
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable auto WiFi manager (replaces manual WiFi manager)
-sudo systemctl daemon-reload
-sudo systemctl enable coffee-auto-wifi.service
-sudo systemctl start coffee-auto-wifi.service
-```
-
-### **6. WiFi Management Commands**
-```bash
-# Check auto WiFi manager status
-sudo systemctl status coffee-auto-wifi.service
-
-# View auto WiFi manager logs
-sudo journalctl -u coffee-auto-wifi.service -f
-
-# Manually switch to iPhone hotspot
-sudo ./switch_to_hotspot.sh
-
-# Manually switch to home WiFi
-sudo ./switch_to_home_wifi.sh
+# View WiFi manager logs
+sudo journalctl -u coffee-wifi-manager.service -f
 
 # Reconfigure WiFi settings
 sudo python3 setup_wifi.py
+
+# Manually switch to AP mode
+sudo systemctl stop coffee-wifi-manager.service
+sudo python3 wifi_manager.py
 
 # Check current WiFi status
 iwconfig wlan0
 ip a show wlan0
 ```
 
-### **7. Usage Instructions**
-
-#### **Automatic Startup Behavior:**
-1. **Pi boots up** → Auto WiFi manager starts
-2. **Waits 30 seconds** → System stabilizes
-3. **Checks for known networks** → Scans for home WiFi
-4. **If home WiFi found** → Switches to home WiFi + starts WiFi manager
-5. **If no home WiFi** → Switches to iPhone hotspot (192.168.1.100)
-
-#### **Manual Control:**
-```bash
-# Switch to iPhone hotspot (for remote access)
-sudo ./switch_to_hotspot.sh
-
-# Switch back to home WiFi
-sudo ./switch_to_home_wifi.sh
-
-# Check current status
-sudo systemctl status coffee-auto-wifi.service
-```
-
-#### **Remote Access via iPhone Hotspot:**
-1. **Turn on iPhone hotspot**
-2. **Pi automatically switches** (or run `sudo ./switch_to_hotspot.sh`)
-3. **Connect laptop to iPhone hotspot**
-4. **SSH to Pi**: `ssh coffeelover@192.168.1.100`
-5. **Web interface**: `http://192.168.1.100:8080`
-
-### **8. Verification**
+### **6. Verification**
 ```bash
 # Check all services are running
-sudo systemctl status coffee-controller.service coffee-webui.service coffee-auto-wifi.service
+sudo systemctl status coffee-controller.service coffee-webui.service coffee-wifi-manager.service
 
 # Test web interface
 curl http://localhost:8080
