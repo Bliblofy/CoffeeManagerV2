@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% block title %}Scan Mode - Coffee Manager{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Scan Mode</h2>
+  <form method="post" action="{{ url_for('toggle_scan_mode') }}">
+    <input type="hidden" name="enabled" value="{{ 1 if not scan_enabled else 0 }}" />
+    <button class="btn">{{ 'Disable' if scan_enabled else 'Enable' }} Scan Mode</button>
+  </form>
+  <p class="muted">When enabled, newly scanned tokens are added as pending (barred, inactive) until user details are completed.</p>
+</section>
+
+<section class="card">
+  <div class="table-responsive">
+    <table id="pending-table">
+      <thead>
+        <tr>
+          <th>Token ID</th>
+          <th>User Name</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="pending-body">
+        {% for u in pending %}
+        <tr data-token="{{ u.token_id }}">
+          <td class="mono">{{ u.token_id }}</td>
+          <td><input value="{{ u.user_name or '' }}" data-field="user_name" /></td>
+          <td><input value="{{ u.name or '' }}" data-field="name" /></td>
+          <td><input value="{{ u.email_address or '' }}" data-field="email_address" /></td>
+          <td><input value="{{ u.phone_number or '' }}" data-field="phone_number" /></td>
+          <td>
+            <small>{{ 'Barred' if u.barred else 'OK' }} / {{ 'Active' if u.active else 'Inactive' }}</small>
+          </td>
+          <td>
+            <button class="btn" data-action="save">Save</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="empty">No pending tokens yet. Enable scan mode and tap a new card.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+const bodyEl = document.getElementById('pending-body');
+
+async function fetchPending(){
+  try{
+    const res = await fetch('{{ url_for('api_scan_pending') }}');
+    if(!res.ok) return;
+    const data = await res.json();
+    renderRows(data);
+  }catch(e){/* ignore */}
+}
+
+function renderRows(rows){
+  // Keep current focus
+  const active = document.activeElement;
+  const activeToken = active && active.closest('tr') ? active.closest('tr').dataset.token : null;
+  const activeField = active && active.dataset ? active.dataset.field : null;
+  const activePos = active && active.selectionStart;
+
+  if(!rows || rows.length === 0){
+    bodyEl.innerHTML = '<tr><td colspan="7" class="empty">No pending tokens yet. Enable scan mode and tap a new card.</td></tr>';
+    return;
+  }
+  bodyEl.innerHTML = rows.map(u => `
+    <tr data-token="${u.token_id}">
+      <td class="mono">${u.token_id}</td>
+      <td><input value="${u.user_name||''}" data-field="user_name" /></td>
+      <td><input value="${u.name||''}" data-field="name" /></td>
+      <td><input value="${u.email_address||''}" data-field="email_address" /></td>
+      <td><input value="${u.phone_number||''}" data-field="phone_number" /></td>
+      <td><small>${u.barred? 'Barred':'OK'} / ${u.active? 'Active':'Inactive'}</small></td>
+      <td><button class="btn" data-action="save">Save</button></td>
+    </tr>`).join('');
+
+  // Restore focus if possible
+  if(activeToken && activeField){
+    const el = bodyEl.querySelector(`tr[data-token="${activeToken}"] input[data-field="${activeField}"]`);
+    if(el){ el.focus(); try{ el.setSelectionRange(activePos, activePos);}catch(_){} }
+  }
+}
+
+bodyEl.addEventListener('click', async (e)=>{
+  const btn = e.target.closest('button[data-action="save"]');
+  if(!btn) return;
+  const tr = btn.closest('tr');
+  const token = tr.dataset.token;
+  const payload = {};
+  tr.querySelectorAll('input[data-field]').forEach(inp => payload[inp.dataset.field] = inp.value.trim());
+  // If essential fields set, auto activate and unbar
+  if(payload.user_name && payload.name){
+    payload.active = 1; payload.barred = 0;
+  }
+  btn.disabled = true;
+  try{
+    const res = await fetch(`{{ url_for('api_update_user', token_id='__TOK__') }}`.replace('__TOK__', encodeURIComponent(token)),{
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    if(res.ok){ await fetchPending(); }
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+// Poll every 2 seconds when page visible
+let pollId;
+function startPoll(){ if(pollId) return; pollId = setInterval(fetchPending, 2000); }
+function stopPoll(){ if(pollId){ clearInterval(pollId); pollId = null; } }
+document.addEventListener('visibilitychange', ()=>{ document.hidden? stopPoll(): startPoll(); });
+startPoll();
+</script>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Invoice Settings{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Invoice Template & Pricing</h2>
+  <form method="post" action="{{ url_for('save_invoice_settings') }}" style="display:flex; flex-direction:column; gap: .75rem;">
+    <div>
+      <label>Subject Template</label>
+      <input name="subject" value="{{ subject }}" />
+      <small class="muted">Available placeholders: {period_start}, {period_end}</small>
+    </div>
+    <div>
+      <label>Body Template</label>
+      <textarea name="body" rows="6">{{ body }}</textarea>
+      <small class="muted">Placeholders: {user_display}, {period_start}, {period_end}, {total_items}, {price_per_coffee}, {total_price}</small>
+    </div>
+    <div>
+      <label>Price per coffee (e.g. 0.60)</label>
+      <input name="price" value="{{ price }}" />
+    </div>
+    <div>
+      <button class="btn" type="submit">Save</button>
+      <a class="btn" href="{{ url_for('invoicing') }}">Back to Invoicing</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+

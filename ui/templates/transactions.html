@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block title %}Transactions - Coffee Manager{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Transactions</h2>
+  <form class="filters" method="get" action="{{ url_for('transactions') }}">
+    <div class="grid">
+      <label>
+        <span>Token ID</span>
+        <input type="text" name="token_id" value="{{ filters.token_id }}" placeholder="Filter by token id" />
+      </label>
+      <label>
+        <span>Username</span>
+        <input type="text" name="user_name" value="{{ filters.user_name }}" placeholder="Filter by username" />
+      </label>
+      <label>
+        <span>Name</span>
+        <input type="text" name="name" value="{{ filters.name }}" placeholder="Filter by name" />
+      </label>
+      <label>
+        <span>Email</span>
+        <input type="text" name="email_address" value="{{ filters.email_address }}" placeholder="Filter by email" />
+      </label>
+      <label>
+        <span>Start Date</span>
+        <input type="date" name="start_date" value="{{ filters.start_date }}" />
+      </label>
+      <label>
+        <span>End Date</span>
+        <input type="date" name="end_date" value="{{ filters.end_date }}" />
+      </label>
+      <label>
+        <span>Start Time</span>
+        <input type="time" name="start_time" value="{{ filters.start_time }}" />
+      </label>
+      <label>
+        <span>End Time</span>
+        <input type="time" name="end_time" value="{{ filters.end_time }}" />
+      </label>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">Apply Filters</button>
+      <a href="{{ url_for('transactions') }}" class="btn secondary">Reset</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Timestamp</th>
+          <th>Token ID</th>
+          <th>Username</th>
+          <th>Name</th>
+          <th>Email</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.id }}</td>
+          <td>{{ r.timestamp }}</td>
+          <td>{{ r.token_id }}</td>
+          <td>{{ r.user_name }}</td>
+          <td>{{ r.name }}</td>
+          <td>{{ r.email_address }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="empty">No transactions found</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Coffee Manager{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container header-inner">
+      <div class="brand">☕ Coffee Manager</div>
+      <nav>
+        <a href="{{ url_for('transactions') }}" class="nav-link">Transactions</a>
+        <a href="{{ url_for('invoicing') }}" class="nav-link">Invoicing</a>
+        <a href="{{ url_for('administration') }}" class="nav-link">Administration</a>
+        <a href="{{ url_for('settings') }}" class="nav-link">Settings</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="container footer">
+    <small>Running on Flask | Raspberry Pi | Tobias Hauptmann</small>
+  </footer>
+</body>
+</html>
+
+

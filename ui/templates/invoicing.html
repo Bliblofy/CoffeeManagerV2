@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}Invoicing - Coffee Manager{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Create Invoice</h2>
+  <p class="muted">Create invoices from the last invoiced moment until now. Only uninvoiced usage will be included.</p>
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Token ID</th>
+          <th>Username</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Uninvoiced Uses</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.token_id }}</td>
+          <td>{{ u.user_name }}</td>
+          <td>{{ u.name }}</td>
+          <td>{{ u.email_address }}</td>
+          <td>{{ u.uninvoiced }}</td>
+          <td>
+            <form method="post" action="{{ url_for('create_invoice', token_id=u.token_id) }}">
+              <button class="btn" {% if u.uninvoiced == 0 %}disabled{% endif %}>Create Invoice</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">No users found</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Invoices</h2>
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>User</th>
+          <th>Period</th>
+          <th>Items</th>
+          <th>Status</th>
+          <th>Opened</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in invoices %}
+        <tr>
+          <td><a href="{{ url_for('toggle_invoice', invoice_id=i.id) }}" onclick="event.preventDefault(); this.closest('tr').querySelector('form').submit();">{{ i.id }}</a></td>
+          <td>{{ i.name or i.user_name }} ({{ i.token_id }})</td>
+          <td>{{ i.period_start }} – {{ i.period_end }}</td>
+          <td>{{ i.total_items }}</td>
+          <td>{{ 'Paid' if i.paid else 'Unpaid' }}</td>
+          <td>{{ i.created_at }}</td>
+          <form method="post" action="{{ url_for('toggle_invoice', invoice_id=i.id) }}"></form>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">No invoices yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+

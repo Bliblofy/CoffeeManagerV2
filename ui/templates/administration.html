@@ -1,0 +1,200 @@
+{% extends 'base.html' %}
+{% block title %}Administration{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Administration</h2>
+  <div style="margin-bottom: 1rem; display:flex; gap:.5rem; align-items:center;">
+    <form method="post" action="{{ url_for('toggle_scan_mode') }}">
+      <input type="hidden" name="enabled" value="{{ 0 if scan_enabled else 1 }}" />
+      {% if scan_enabled %}
+        <button class="btn" type="submit">Disable Scan Mode</button>
+      {% else %}
+        <button class="btn" type="submit">Enable Scan Mode</button>
+      {% endif %}
+    </form>
+    <span class="muted">Scan mode {{ 'enabled' if scan_enabled else 'disabled' }}. New badges will {{ 'appear automatically' if scan_enabled else 'not be polled' }}.</span>
+  </div>
+
+  <table class="table" id="users-table">
+    <thead>
+      <tr>
+        <th>Token</th>
+        <th>User Name</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th>State</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="users-body">
+      {% for u in users %}
+      <tr data-token="{{ u.token_id }}" data-editing="0">
+        <td class="cell-token"><code>{{ u.token_id }}</code></td>
+        <td class="cell-user_name"><span>{{ u.user_name or '' }}</span></td>
+        <td class="cell-name"><span>{{ u.name or '' }}</span></td>
+        <td class="cell-email_address"><span>{{ u.email_address or '' }}</span></td>
+        <td class="cell-phone_number"><span>{{ u.phone_number or '' }}</span></td>
+        <td class="cell-state">
+          {% set state = 'barred' if u.barred else ('active' if u.active else 'inactive') %}
+          <span data-state="{{ state }}">{{ state }}</span>
+        </td>
+        <td class="cell-actions">
+          <button class="btn btn-small" onclick="enterEdit(this)">Edit</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+// Local cache of edits per token
+const localEdits = new Map();
+
+function stateFromFlags(active, barred) {
+  if (barred) return 'barred';
+  if (active) return 'active';
+  return 'inactive';
+}
+
+function flagsFromState(state) {
+  if (state === 'barred') return { active: 0, barred: 1 };
+  if (state === 'active') return { active: 1, barred: 0 };
+  return { active: 0, barred: 0 };
+}
+
+function makeInput(value, field) {
+  const input = document.createElement('input');
+  input.value = value || '';
+  input.setAttribute('data-field', field);
+  input.oninput = () => {/* keep local */};
+  return input;
+}
+
+function makeStateSelect(state) {
+  const sel = document.createElement('select');
+  sel.innerHTML = `
+    <option value="inactive">inactive</option>
+    <option value="active">active</option>
+    <option value="barred">barred</option>
+  `;
+  sel.value = state || 'inactive';
+  sel.setAttribute('data-field', '__state');
+  return sel;
+}
+
+function enterEdit(btn) {
+  const tr = btn.closest('tr');
+  if (!tr || tr.dataset.editing === '1') return;
+  tr.dataset.editing = '1';
+  const token = tr.dataset.token;
+  const current = rowToObject(tr);
+  localEdits.set(token, { ...current });
+
+  tr.querySelector('.cell-user_name').innerHTML = '';
+  tr.querySelector('.cell-user_name').appendChild(makeInput(current.user_name, 'user_name'));
+  tr.querySelector('.cell-name').innerHTML = '';
+  tr.querySelector('.cell-name').appendChild(makeInput(current.name, 'name'));
+  tr.querySelector('.cell-email_address').innerHTML = '';
+  tr.querySelector('.cell-email_address').appendChild(makeInput(current.email_address, 'email_address'));
+  tr.querySelector('.cell-phone_number').innerHTML = '';
+  tr.querySelector('.cell-phone_number').appendChild(makeInput(current.phone_number, 'phone_number'));
+
+  const stateCell = tr.querySelector('.cell-state');
+  stateCell.innerHTML = '';
+  stateCell.appendChild(makeStateSelect(current.state));
+
+  const actions = tr.querySelector('.cell-actions');
+  actions.innerHTML = '';
+  const doneBtn = document.createElement('button');
+  doneBtn.className = 'btn btn-small';
+  doneBtn.textContent = 'Done';
+  doneBtn.onclick = () => saveEdit(tr);
+  actions.appendChild(doneBtn);
+}
+
+function rowToObject(tr) {
+  const token = tr.dataset.token;
+  const user_name = tr.querySelector('.cell-user_name span')?.textContent || tr.querySelector('.cell-user_name input')?.value || '';
+  const name = tr.querySelector('.cell-name span')?.textContent || tr.querySelector('.cell-name input')?.value || '';
+  const email_address = tr.querySelector('.cell-email_address span')?.textContent || tr.querySelector('.cell-email_address input')?.value || '';
+  const phone_number = tr.querySelector('.cell-phone_number span')?.textContent || tr.querySelector('.cell-phone_number input')?.value || '';
+  const stateSpan = tr.querySelector('.cell-state span');
+  const select = tr.querySelector('.cell-state select');
+  const state = select ? select.value : (stateSpan?.dataset.state || 'inactive');
+  return { token_id: token, user_name, name, email_address, phone_number, state };
+}
+
+async function saveEdit(tr) {
+  const token = tr.dataset.token;
+  const payload = {};
+  const inputs = tr.querySelectorAll('input, select');
+  inputs.forEach(el => {
+    const field = el.getAttribute('data-field');
+    if (field === '__state') return;
+    payload[field] = el.value.trim();
+  });
+  const state = tr.querySelector('select[data-field="__state"]').value;
+  Object.assign(payload, flagsFromState(state));
+  if (payload.user_name && payload.name) {
+    payload.active = 1; payload.barred = 0;
+  }
+  const resp = await fetch(`${'${'}{{ url_for('api_update_user', token_id='__T__') }}${'}'}`.replace('__T__', token), {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+  });
+  if (!resp.ok) { alert('Failed to save'); return; }
+  const { user } = await resp.json();
+  // Render back to read-only state with server values
+  renderRowFromUser(tr, user);
+  localEdits.delete(token);
+}
+
+function renderRowFromUser(tr, u) {
+  tr.dataset.editing = '0';
+  tr.querySelector('.cell-user_name').innerHTML = `<span>${u.user_name || ''}</span>`;
+  tr.querySelector('.cell-name').innerHTML = `<span>${u.name || ''}</span>`;
+  tr.querySelector('.cell-email_address').innerHTML = `<span>${u.email_address || ''}</span>`;
+  tr.querySelector('.cell-phone_number').innerHTML = `<span>${u.phone_number || ''}</span>`;
+  const state = stateFromFlags(!!u.active, !!u.barred);
+  tr.querySelector('.cell-state').innerHTML = `<span data-state="${state}">${state}</span>`;
+  tr.querySelector('.cell-actions').innerHTML = `<button class="btn btn-small" onclick="enterEdit(this)">Edit</button>`;
+}
+
+function appendUserIfNew(u) {
+  const tbody = document.getElementById('users-body');
+  if (tbody.querySelector(`tr[data-token="${u.token_id}"]`)) return;
+  const tr = document.createElement('tr');
+  tr.setAttribute('data-token', u.token_id);
+  tr.setAttribute('data-editing', '0');
+  tr.innerHTML = `
+    <td class="cell-token"><code>${u.token_id}</code></td>
+    <td class="cell-user_name"><span>${u.user_name || ''}</span></td>
+    <td class="cell-name"><span>${u.name || ''}</span></td>
+    <td class="cell-email_address"><span>${u.email_address || ''}</span></td>
+    <td class="cell-phone_number"><span>${u.phone_number || ''}</span></td>
+    <td class="cell-state"><span data-state="${stateFromFlags(!!u.active, !!u.barred)}">${stateFromFlags(!!u.active, !!u.barred)}</span></td>
+    <td class="cell-actions"><button class="btn btn-small" onclick="enterEdit(this)">Edit</button></td>
+  `;
+  tbody.prepend(tr);
+}
+
+async function pollNewBadges() {
+  try {
+    const statusResp = await fetch('{{ url_for('api_scan_status') }}');
+    if (!statusResp.ok) return;
+    const { scan_mode } = await statusResp.json();
+    if (!scan_mode) return;
+    // Only add new users if any; do not overwrite existing rows or edit states
+    const usersResp = await fetch('{{ url_for('api_admin_users') }}');
+    if (!usersResp.ok) return;
+    const all = await usersResp.json();
+    for (const u of all) {
+      appendUserIfNew(u);
+    }
+  } catch (e) { /* ignore */ }
+}
+
+setInterval(pollNewBadges, 15000);
+</script>
+{% endblock %}

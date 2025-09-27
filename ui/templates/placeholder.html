@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} - Coffee Manager{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>{{ title }}</h2>
+  <p>{{ message }}</p>
+  <p class="muted">This page is a placeholder and will be implemented in a future task.</p>
+  <a class="btn" href="{{ url_for('transactions') }}">Back to Transactions</a>
+{% endblock %}
+
+

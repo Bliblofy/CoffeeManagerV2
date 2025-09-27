@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Invoice #{{ invoice.id }} - Coffee Manager{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Invoice #{{ invoice.id }} — {{ invoice.name or invoice.user_name }} ({{ invoice.token_id }})</h2>
+  <p>Period: <strong>{{ invoice.period_start }}</strong> to <strong>{{ invoice.period_end }}</strong></p>
+  <p>Status: <strong>{{ 'Paid' if invoice.paid else 'Unpaid' }}</strong></p>
+  <div class="actions">
+    <form method="post" action="{{ url_for('toggle_invoice', invoice_id=invoice.id) }}" style="display:inline">
+      <button class="btn">Mark as {{ 'Unpaid' if invoice.paid else 'Paid' }}</button>
+    </form>
+    <a class="btn secondary" href="{{ url_for('invoicing') }}">Back</a>
+    <a class="btn" href="{{ mailto }}">Open Mail</a>
+  </div>
+</section>
+
+<section class="card">
+  <h3>Items ({{ invoice.line_items|length }})</h3>
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Usage ID</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in invoice.line_items %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ it.usage_id }}</td>
+          <td>{{ it.timestamp }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="empty">No items</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+

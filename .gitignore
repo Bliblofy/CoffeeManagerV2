@@ -1,0 +1,86 @@
+# --- Sensitive/local config ---
+secrets.txt
+*.env
+.env*
+
+# --- Databases & local data ---
+database/*.db
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+pip-wheel-metadata/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+*.pytest_cache/
+.pytest_cache/
+pytestdebug.log
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Jupyter/IPython
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+
+# VS Code / IDEs
+.vscode/
+.idea/
+*.iml
+.DS_Store
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Flask/Static artifacts
+instance/
+ui/static/*.map
+
+# Node (if any frontend tooling is added later)
+node_modules/
+package-lock.json
+yarn.lock
+
+

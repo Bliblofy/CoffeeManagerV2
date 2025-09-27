@@ -1,0 +1,14 @@
+# Coffee Manager Database Dependencies
+# Install with: pip3 install -r requirements.txt
+
+# Core database functionality (built into Python 3.6+)
+# sqlite3 is included in Python standard library
+
+# Optional: For enhanced date/time handling
+python-dateutil>=2.8.0
+
+# Optional: For data validation
+pydantic>=1.8.0
+
+# Optional: For better error handling and logging
+colorama>=0.4.4
