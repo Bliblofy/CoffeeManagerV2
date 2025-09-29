@@ -89,6 +89,26 @@
       </div>
     </div>
   </div>
+
+  <!-- System Time Settings -->
+  <div class="settings-section">
+    <h3>System Time</h3>
+    <div class="display-mode" style="margin-bottom: 0.5rem;">
+      <strong>Current system time:</strong>
+      <code>{{ current_time }}</code>
+    </div>
+    <form method="post" action="{{ url_for('save_settings') }}" onsubmit="return confirm('Set system time? This requires privileges.');">
+      <input type="hidden" name="subject" value="{{ subject }}" />
+      <input type="hidden" name="body" value="{{ body }}" />
+      <input type="hidden" name="price" value="{{ price }}" />
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <label for="system_time">Set system time (YYYY-MM-DD HH:MM:SS):</label>
+        <input type="text" id="system_time" name="system_time" placeholder="2025-09-29 14:30:00" style="width: 220px;" />
+        <button type="submit" class="btn">Apply</button>
+      </div>
+      <small class="muted">Requires system permissions; may fail without proper privileges.</small>
+    </form>
+  </div>
 </section>
 
 <style>

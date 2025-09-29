@@ -15,6 +15,13 @@
     <span class="muted">Scan mode {{ 'enabled' if scan_enabled else 'disabled' }}. New badges will {{ 'appear automatically' if scan_enabled else 'not be polled' }}.</span>
   </div>
 
+  {% if scan_enabled %}
+  <div id="scan-terminal" style="font-family: monospace; background:#0b0b0b; color:#33ff66; padding:0.75rem 1rem; border-radius:6px; margin-bottom:1rem; border:1px solid #1e1e1e;">
+    <div style="color:#9aa0a6; margin-bottom:0.25rem;">Scan Monitor</div>
+    <div id="scan-line">waiting for scan...</div>
+  </div>
+  {% endif %}
+
   <table class="table" id="users-table">
     <thead>
       <tr>
@@ -196,5 +203,23 @@ async function pollNewBadges() {
 }
 
 setInterval(pollNewBadges, 15000);
+
+async function pollLastScanned() {
+  try {
+    const statusResp = await fetch('{{ url_for('api_scan_status') }}');
+    if (!statusResp.ok) return;
+    const { scan_mode } = await statusResp.json();
+    if (!scan_mode) return;
+    const resp = await fetch('{{ url_for('api_scan_last') }}');
+    if (!resp.ok) return;
+    const { token, timestamp } = await resp.json();
+    const line = document.getElementById('scan-line');
+    if (line && (token || timestamp)) {
+      line.textContent = token ? `token: ${token}  @ ${timestamp || ''}` : 'waiting for scan...';
+    }
+  } catch (e) { /* ignore */ }
+}
+
+setInterval(pollLastScanned, 2000);
 </script>
 {% endblock %}

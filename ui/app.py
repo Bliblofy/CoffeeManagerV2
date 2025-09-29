@@ -170,13 +170,16 @@ def create_app():
         subject = db.get_setting('invoice_subject') or 'Coffee Invoice {period_start} - {period_end}'
         body = db.get_setting('invoice_body') or 'Dear {user_display}, this is your invoice for the billing period {period_start} until {period_end}. Total coffees: {total_items}, price per coffee: {price_per_coffee}, total price: {total_price}. Thank you!'
         price = db.get_setting('price_per_coffee') or '0.00'
-        return render_template('settings.html', subject=subject, body=body, price=price)
+        from datetime import datetime
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        return render_template('settings.html', subject=subject, body=body, price=price, current_time=current_time)
 
     @app.post('/settings')
     def save_settings():
         subject = request.form.get('subject') or ''
         body = request.form.get('body') or ''
         price = request.form.get('price') or '0'
+        new_time = (request.form.get('system_time') or '').strip()
         try:
             _ = float(price)
         except ValueError:
@@ -184,6 +187,34 @@ def create_app():
         db.set_setting('invoice_subject', subject)
         db.set_setting('invoice_body', body)
         db.set_setting('price_per_coffee', price)
+        # Handle optional system time update
+        if new_time:
+            from datetime import datetime
+            import subprocess
+            # Validate format strictly as 'YYYY-MM-DD HH:MM:SS'
+            try:
+                _ = datetime.strptime(new_time, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                return render_template('message.html', title='Invalid Time', message='Time must be in format YYYY-MM-DD HH:MM:SS.'), 400
+            # Try to set time using date -s (works on Linux); if not permitted, attempt sudo -n
+            commands_to_try = [
+                ['date', '-s', new_time],
+                ['sudo', '-n', 'date', '-s', new_time],
+            ]
+            set_ok = False
+            error_msg = ''
+            for cmd in commands_to_try:
+                try:
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                    if res.returncode == 0:
+                        set_ok = True
+                        break
+                    else:
+                        error_msg = (res.stderr or res.stdout or '').strip()
+                except Exception as e:
+                    error_msg = str(e)
+            if not set_ok:
+                return render_template('message.html', title='Time Not Set', message=f'Failed to set system time. {error_msg or "Insufficient privileges."}'), 500
         return render_template('message.html', title='Saved', message='Settings saved successfully.')
 
     # ---- Scan Mode: settings helpers ----
@@ -227,6 +258,13 @@ def create_app():
     @app.get('/api/scan-mode/status')
     def api_scan_status():
         return jsonify({"scan_mode": _get_scan_mode_enabled()})
+
+    @app.get('/api/scan-mode/last')
+    def api_scan_last():
+        # Return last scanned token info for live UI
+        token = db.get_setting('last_scanned_token') or ''
+        ts = db.get_setting('last_scanned_at') or ''
+        return jsonify({"token": token, "timestamp": ts})
 
     @app.get('/api/scan-mode/pending')
     def api_scan_pending():
