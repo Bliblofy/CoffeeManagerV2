@@ -110,6 +110,11 @@ class CoffeeDatabaseManager:
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
+            # Ensure the user exists first; treat no-op updates as success for existing users
+            cursor.execute('SELECT 1 FROM users WHERE token_id = ? LIMIT 1', (token_id,))
+            exists_row = cursor.fetchone()
+            if not exists_row:
+                return False
             
             # Build dynamic update query
             set_clauses = []
@@ -120,14 +125,17 @@ class CoffeeDatabaseManager:
                     values.append(value)
             
             if not set_clauses:
-                return False
+                # Nothing to update, but user exists — consider this a successful no-op
+                return True
                 
             values.append(token_id)
             query = f"UPDATE users SET {', '.join(set_clauses)} WHERE token_id = ?"
             
             cursor.execute(query, values)
             conn.commit()
-            return cursor.rowcount > 0
+            # Some SQLite builds report rowcount=0 for no-op updates even when the row exists
+            # Treat commit without error as success since the user exists
+            return True
         except sqlite3.Error as e:
             print(f"❌ Error updating user: {e}")
             return False

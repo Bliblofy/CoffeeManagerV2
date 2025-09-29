@@ -240,7 +240,7 @@ class CoffeeController:
                 self.relay_deactivation_time = 0.0
     
     def get_activation_duration(self):
-        """Determine activation duration based on last usage: 30s normal, 2min if >30min since last use
+        """Determine activation duration based on last usage: 30s normal, 90s if >30min since last use
         
         Note: Time accuracy for offline operation:
         - Raspberry Pi uses system clock which may drift without NTP sync
@@ -257,16 +257,16 @@ class CoffeeController:
             
             if last_usage is None:
                 # No previous usage - use extended duration for first boot
-                print("No previous usage found - using extended 2-minute activation")
-                return 120  # 2 minutes
+                print("No previous usage found - using extended 90-second activation")
+                return 90  # 90 seconds
             
             # Calculate time since last usage
             time_since_last = now - last_usage
             
             # If more than 30 minutes since last use, use extended duration
             if time_since_last > timedelta(minutes=30):
-                print(f"Last usage was {time_since_last} ago - using extended 2-minute activation")
-                return 120  # 2 minutes
+                print(f"Last usage was {time_since_last} ago - using extended 90-second activation")
+                return 90  # 90 seconds
             else:
                 print(f"Last usage was {time_since_last} ago - using normal 30-second activation")
                 return 30   # 30 seconds
@@ -344,6 +344,13 @@ class CoffeeController:
 
                     # If scan mode enabled, create pending user and continue
                     if self.scan_mode:
+                        # Record last scanned token for UI display
+                        try:
+                            from datetime import datetime
+                            self.db.set_setting('last_scanned_token', uid)
+                            self.db.set_setting('last_scanned_at', datetime.now().isoformat())
+                        except Exception:
+                            pass
                         existing = None
                         try:
                             existing = self.db.get_user(uid)
