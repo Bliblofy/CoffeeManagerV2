@@ -46,9 +46,15 @@ class CoffeeController:
             db_master = None
         self.master_token_id = env_master if env_master else db_master
         self.master_mode = False
-        # Cache scan mode setting
+        # Cache scan mode setting; default to normal mode if unset
         try:
-            self.scan_mode = self.db.get_setting('scan_mode') == '1'
+            val = self.db.get_setting('scan_mode')
+            if val is None:
+                # Ensure default persisted as normal mode
+                self.db.set_setting('scan_mode', '0')
+                self.scan_mode = False
+            else:
+                self.scan_mode = val == '1'
         except Exception:
             self.scan_mode = False
         # Runtime lock to prevent multiple scans while machine is unlocked/active
@@ -240,7 +246,7 @@ class CoffeeController:
                 self.relay_deactivation_time = 0.0
     
     def get_activation_duration(self):
-        """Determine activation duration based on last usage: 30s normal, 90s if >30min since last use
+        """Determine activation duration based on last usage: 30s normal, 45s if >30min since last use
         
         Note: Time accuracy for offline operation:
         - Raspberry Pi uses system clock which may drift without NTP sync
@@ -257,16 +263,16 @@ class CoffeeController:
             
             if last_usage is None:
                 # No previous usage - use extended duration for first boot
-                print("No previous usage found - using extended 90-second activation")
-                return 90  # 90 seconds
+                print("No previous usage found - using extended 45-second activation")
+                return 45  # 45 seconds
             
             # Calculate time since last usage
             time_since_last = now - last_usage
             
             # If more than 30 minutes since last use, use extended duration
             if time_since_last > timedelta(minutes=30):
-                print(f"Last usage was {time_since_last} ago - using extended 90-second activation")
-                return 90  # 90 seconds
+                print(f"Last usage was {time_since_last} ago - using extended 45-second activation")
+                return 45  # 45 seconds
             else:
                 print(f"Last usage was {time_since_last} ago - using normal 30-second activation")
                 return 30   # 30 seconds

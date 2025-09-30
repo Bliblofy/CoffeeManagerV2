@@ -201,7 +201,7 @@ export MASTER_TOKEN_ID="your_master_token_uid_here"
 python3 -c "
 from database.database_manager import CoffeeDatabaseManager
 db = CoffeeDatabaseManager()
-db.set_setting('master_token_id', 'aa1e53c324')
+db.set_setting('master_token_id', '<MASTER_TOKEN_ID>')
 print('Master token set')
 "
 ```
@@ -223,7 +223,7 @@ WorkingDirectory=/home/coffeelover/CoffeeManager
 ExecStart=/usr/bin/python3 /home/coffeelover/CoffeeManager/controller/coffee_controller.py
 Restart=always
 RestartSec=10
-Environment=MASTER_TOKEN_ID=aa1e53c324
+Environment=MASTER_TOKEN_ID=<MASTER_TOKEN_ID>
 StandardOutput=journal
 StandardError=journal
 

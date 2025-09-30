@@ -18,6 +18,14 @@ def create_app():
 
     db = CoffeeDatabaseManager()
 
+    # Ensure normal mode is the default: initialize scan_mode to '0' if unset
+    try:
+        current_scan_mode = db.get_setting('scan_mode')
+        if current_scan_mode is None:
+            db.set_setting('scan_mode', '0')
+    except Exception:
+        pass
+
     @app.route('/')
     def index():
         return transactions()
@@ -261,9 +269,39 @@ def create_app():
 
     @app.get('/api/scan-mode/last')
     def api_scan_last():
-        # Return last scanned token info for live UI
+        # Return only a fresh scan event while scan mode is enabled; ignore historical values
+        from datetime import datetime, timedelta
+        # If scan mode is disabled, never surface a token
+        if str(db.get_setting('scan_mode')) != '1':
+            return jsonify({"token": "", "timestamp": ""})
         token = db.get_setting('last_scanned_token') or ''
         ts = db.get_setting('last_scanned_at') or ''
+        # Freshness window: only consider scans from the last 5 seconds
+        FRESH_WINDOW_SECONDS = 5
+        is_fresh = False
+        if ts:
+            try:
+                scanned_at = None
+                # Try ISO format first
+                try:
+                    scanned_at = datetime.fromisoformat(str(ts))
+                except Exception:
+                    scanned_at = None
+                # Fallbacks for common SQLite string formats
+                if scanned_at is None:
+                    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+                        try:
+                            scanned_at = datetime.strptime(str(ts), fmt)
+                            break
+                        except Exception:
+                            continue
+                if scanned_at is not None:
+                    is_fresh = datetime.now() - scanned_at <= timedelta(seconds=FRESH_WINDOW_SECONDS)
+            except Exception:
+                is_fresh = False
+        # If not fresh, do not surface any token
+        if not is_fresh:
+            return jsonify({"token": "", "timestamp": ""})
         return jsonify({"token": token, "timestamp": ts})
 
     @app.get('/api/scan-mode/pending')
@@ -303,6 +341,10 @@ def create_app():
         # Ensure user exists (pending), then update allowed fields if provided
         db.add_pending_user(token_id)
         allowed = {k: v for k, v in payload.items() if k in ['user_name','name','email_address','phone_number','barred','active']}
+        # If both key fields provided, default to active and unbarred unless specified
+        if (allowed.get('user_name') or '').strip() and (allowed.get('name') or '').strip():
+            allowed.setdefault('active', 1)
+            allowed.setdefault('barred', 0)
         if allowed:
             db.update_user(token_id, **allowed)
         user = db.get_user(token_id) or {}

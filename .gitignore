@@ -1,3 +1,7 @@
+secrets.txt
+database/coffee_manager.db
+__pycache__/
+*.pyc
 # --- Sensitive/local config ---
 secrets.txt
 *.env

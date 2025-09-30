@@ -15,6 +15,19 @@
     <span class="muted">Scan mode {{ 'enabled' if scan_enabled else 'disabled' }}. New badges will {{ 'appear automatically' if scan_enabled else 'not be polled' }}.</span>
   </div>
 
+  <form id="add-user-form" class="card" style="padding: .75rem; margin-bottom:1rem;">
+    <div style="font-weight:600; margin-bottom:.5rem;">Add User Manually</div>
+    <div style="display:grid; grid-template-columns: repeat(6, 1fr); gap:.5rem; align-items:center;">
+      <input id="add_token_id" placeholder="Token ID" />
+      <input id="add_user_name" placeholder="User Name" />
+      <input id="add_name" placeholder="Name" />
+      <input id="add_email" placeholder="Email" />
+      <input id="add_phone" placeholder="Phone" />
+      <button class="btn" type="submit">Add</button>
+    </div>
+    <div id="add-user-error" class="muted" style="color:#b00020; margin-top:.25rem; display:none;"></div>
+  </form>
+
   {% if scan_enabled %}
   <div id="scan-terminal" style="font-family: monospace; background:#0b0b0b; color:#33ff66; padding:0.75rem 1rem; border-radius:6px; margin-bottom:1rem; border:1px solid #1e1e1e;">
     <div style="color:#9aa0a6; margin-bottom:0.25rem;">Scan Monitor</div>
@@ -147,7 +160,7 @@ async function saveEdit(tr) {
   if (payload.user_name && payload.name) {
     payload.active = 1; payload.barred = 0;
   }
-  const resp = await fetch(`${'${'}{{ url_for('api_update_user', token_id='__T__') }}${'}'}`.replace('__T__', token), {
+  const resp = await fetch(`{{ url_for('api_update_user', token_id='__T__') }}`.replace('__T__', token), {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
   });
   if (!resp.ok) { alert('Failed to save'); return; }
@@ -185,6 +198,39 @@ function appendUserIfNew(u) {
   `;
   tbody.prepend(tr);
 }
+
+document.getElementById('add-user-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('add-user-error');
+  err.style.display = 'none'; err.textContent = '';
+  const token_id = document.getElementById('add_token_id').value.trim();
+  const user_name = document.getElementById('add_user_name').value.trim();
+  const name = document.getElementById('add_name').value.trim();
+  const email_address = document.getElementById('add_email').value.trim();
+  const phone_number = document.getElementById('add_phone').value.trim();
+  if (!token_id) { err.textContent = 'Token ID is required.'; err.style.display = 'block'; return; }
+  try {
+    const resp = await fetch('{{ url_for('api_admin_add_user') }}', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token_id, user_name, name, email_address, phone_number })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) { throw new Error(data.error || 'Failed to add user'); }
+    // Prepend row or update existing one using server values
+    appendUserIfNew(data.user);
+    const tr = document.querySelector(`tr[data-token="${data.user.token_id}"]`);
+    if (tr) { renderRowFromUser(tr, data.user); }
+    // Clear inputs
+    document.getElementById('add_token_id').value = '';
+    document.getElementById('add_user_name').value = '';
+    document.getElementById('add_name').value = '';
+    document.getElementById('add_email').value = '';
+    document.getElementById('add_phone').value = '';
+  } catch (e2) {
+    err.textContent = e2.message || String(e2);
+    err.style.display = 'block';
+  }
+});
 
 async function pollNewBadges() {
   try {
