@@ -65,6 +65,8 @@ class CoffeeController:
         self.invalid_attempt_timestamps = deque()
         # Relay deactivation timer (non-blocking)
         self.relay_deactivation_time = 0.0
+        # Track last usage time for activation duration logic (epoch seconds)
+        self.last_used_time = 0.0
 
         self.setup_gpio()
         self.setup_spi()
@@ -245,43 +247,6 @@ class CoffeeController:
                     GPIO.output(pin, GPIO.LOW)
                 self.relay_deactivation_time = 0.0
     
-    def get_activation_duration(self):
-        """Determine activation duration based on last usage: 30s normal, 45s if >30min since last use
-        
-        Note: Time accuracy for offline operation:
-        - Raspberry Pi uses system clock which may drift without NTP sync
-        - For offline operation, consider using RTC module or periodic NTP sync when online
-        - Current implementation uses system time which is sufficient for 25-minute threshold
-        - Database timestamps are stored in local timezone
-        """
-        try:
-            from datetime import datetime, timedelta
-            
-            # Get last usage timestamp from database BEFORE logging the new one
-            last_usage = self.db.get_last_usage_timestamp()
-            now = datetime.now()
-            
-            if last_usage is None:
-                # No previous usage - use extended duration for first boot
-                print("No previous usage found - using extended 45-second activation")
-                return 45  # 45 seconds
-            
-            # Calculate time since last usage
-            time_since_last = now - last_usage
-            
-            # If more than 30 minutes since last use, use extended duration
-            if time_since_last > timedelta(minutes=30):
-                print(f"Last usage was {time_since_last} ago - using extended 45-second activation")
-                return 45  # 45 seconds
-            else:
-                print(f"Last usage was {time_since_last} ago - using normal 30-second activation")
-                return 30   # 30 seconds
-                
-        except Exception as e:
-            print(f"Error determining activation duration: {e}")
-            # Default to normal duration on error
-            return 30
-                
     def cleanup(self):
         """Clean up GPIO resources"""
         GPIO.cleanup()
@@ -383,10 +348,15 @@ class CoffeeController:
                         except Exception as e:
                             print(f"Usage log error: {e}")
                         
-                        # Activate relays for dynamic duration based on usage history
-                        activation_seconds = self.get_activation_duration()
+                        # Determine activation duration: 90s if unused >30min, else 30s
+                        now = time.time()
+                        time_since_last = now - self.last_used_time
+                        activation_seconds = 90 if time_since_last > 1800 else 30
+                        self.last_used_time = now  # Update last use time
+                        print(f"Activation: {activation_seconds}s (last used {time_since_last:.0f}s ago)")
+                        
                         # Set lock to cover activation period plus a short grace period
-                        self.lock_until_epoch = time.time() + activation_seconds + 1.0
+                        self.lock_until_epoch = now + activation_seconds + 1.0
                         self.activate_all_relays(activation_seconds)
                         
                         # Keep LED green during active window; it will reset to ready when relays auto-deactivate
