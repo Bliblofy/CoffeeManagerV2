@@ -324,7 +324,133 @@ iwconfig wlan0
 ip a show wlan0
 ```
 
-### **6. Verification**
+### **6. Auto-Update System Setup (Optional)**
+
+The Coffee Manager includes an automatic update system that checks GitHub for updates, applies them, validates the system, and rolls back if tests fail.
+
+#### New Installation
+```bash
+# Install the auto-updater service and timer
+sudo cp /home/coffeelover/CoffeeManager/systemd/coffee-updater.service /etc/systemd/system/
+sudo cp /home/coffeelover/CoffeeManager/systemd/coffee-updater.timer /etc/systemd/system/
+
+# Enable and start the updater timer
+sudo systemctl daemon-reload
+sudo systemctl enable coffee-updater.timer
+sudo systemctl start coffee-updater.timer
+
+# Verify timer is active
+sudo systemctl status coffee-updater.timer
+sudo systemctl list-timers coffee-updater.timer
+```
+
+#### Upgrading to Auto-Updater if System was Setup Before 10th Oct. 2025
+
+If your Coffee Manager was installed before the auto-updater feature was added, you need to update the database schema to include version tracking fields.
+
+```bash
+# Navigate to project directory
+cd /home/coffeelover/CoffeeManager
+
+# Pull latest changes from GitHub
+git pull origin main
+
+# Add version tracking fields to existing database
+python3 << 'EOF'
+import sqlite3
+import os
+
+db_path = os.path.join('database', 'coffee_manager.db')
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+
+# Add version tracking settings if they don't exist
+version_settings = [
+    ('current_version', 'unknown'),
+    ('previous_version', 'unknown'),
+    ('last_update_check', '1970-01-01 00:00:00'),
+    ('last_update_time', '1970-01-01 00:00:00'),
+    ('last_update_status', 'never'),
+    ('last_update_message', 'No updates performed yet')
+]
+
+for key, value in version_settings:
+    cursor.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+        (key, value)
+    )
+
+conn.commit()
+conn.close()
+print("✓ Database upgraded successfully with version tracking fields")
+EOF
+
+# Set current version to current commit
+CURRENT_COMMIT=$(git rev-parse HEAD)
+python3 -c "
+from database.database_manager import CoffeeDatabaseManager
+db = CoffeeDatabaseManager()
+db.set_setting('current_version', '$CURRENT_COMMIT')
+db.set_setting('previous_version', '$CURRENT_COMMIT')
+print('✓ Current version set to: $CURRENT_COMMIT')
+"
+
+# Install the auto-updater service and timer
+sudo cp /home/coffeelover/CoffeeManager/systemd/coffee-updater.service /etc/systemd/system/
+sudo cp /home/coffeelover/CoffeeManager/systemd/coffee-updater.timer /etc/systemd/system/
+
+# Enable and start the updater timer
+sudo systemctl daemon-reload
+sudo systemctl enable coffee-updater.timer
+sudo systemctl start coffee-updater.timer
+
+# Verify timer is active
+sudo systemctl status coffee-updater.timer
+
+echo "✓ Auto-updater installed and activated"
+echo "✓ Version info will appear in Administration page"
+```
+
+**Verification:**
+1. Open the web interface at `http://192.168.1.142:8080/administration`
+2. Scroll to the bottom - you should see version information
+3. Check updater logs: `sudo journalctl -u coffee-updater.timer -f`
+
+#### Auto-Update Features
+- **Scheduled Updates**: Runs 10 minutes after boot and daily at 2:00 AM
+- **Network Resilient**: Gracefully handles no internet connection
+- **Validation Tests**: Runs comprehensive tests after updates
+- **Automatic Rollback**: Reverts to previous version if tests fail
+- **Version Tracking**: View current version and update status in Admin UI
+
+#### Manual Update Commands
+```bash
+# Check for updates manually
+sudo systemctl start coffee-updater.service
+
+# View update logs
+sudo journalctl -u coffee-updater.service -n 50
+
+# Check last update status
+sudo journalctl -u coffee-updater.service | tail -20
+
+# Disable auto-updates
+sudo systemctl stop coffee-updater.timer
+sudo systemctl disable coffee-updater.timer
+
+# Re-enable auto-updates
+sudo systemctl enable coffee-updater.timer
+sudo systemctl start coffee-updater.timer
+```
+
+#### Update Status Indicators
+The Administration page displays version information at the bottom:
+- **✓ (Green)**: Update successful or system up to date
+- **⟲ (Yellow)**: Update was rolled back due to test failures
+- **✗ (Red)**: Update error occurred
+- **○ (Gray)**: No internet connection or no updates performed
+
+### **7. Verification**
 ```bash
 # Check all services are running
 sudo systemctl status coffee-controller.service coffee-webui.service coffee-wifi-manager.service
@@ -335,6 +461,9 @@ curl http://localhost:8080
 # Check WiFi connection
 iwconfig wlan0
 ip a show wlan0
+
+# Check auto-updater timer (if enabled)
+sudo systemctl status coffee-updater.timer
 ```
 
 ## **Key Redundancies Eliminated:**

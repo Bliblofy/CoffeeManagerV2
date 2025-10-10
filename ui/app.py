@@ -30,6 +30,60 @@ def create_app():
     def index():
         return transactions()
 
+    @app.route('/leaderboard')
+    def leaderboard():
+        from datetime import datetime, timedelta
+        
+        # Get period parameter (30days, 7days, or custom)
+        period = request.args.get('period', '30days')
+        custom_date = request.args.get('date', '')
+        
+        # Calculate date range based on period
+        now = datetime.now()
+        if period == '7days':
+            start_date = (now - timedelta(days=7)).strftime('%Y-%m-%d')
+            end_date = now.strftime('%Y-%m-%d')
+            days_in_period = 7
+        elif period == 'custom' and custom_date:
+            start_date = custom_date
+            end_date = custom_date
+            days_in_period = 1
+        else:  # default: 30days
+            period = '30days'
+            start_date = (now - timedelta(days=30)).strftime('%Y-%m-%d')
+            end_date = now.strftime('%Y-%m-%d')
+            days_in_period = 30
+        
+        # Query: Get all users with coffee counts in the date range
+        query = """
+            SELECT 
+                u.token_id,
+                u.user_name,
+                u.name,
+                COUNT(ul.id) as coffee_count,
+                CAST(COUNT(ul.id) AS FLOAT) / ? as avg_per_day
+            FROM users u
+            JOIN usage_log ul ON u.token_id = ul.token_id
+            WHERE date(ul.timestamp) >= date(?) AND date(ul.timestamp) <= date(?)
+            GROUP BY u.token_id
+            ORDER BY coffee_count DESC, u.name ASC
+        """
+        
+        with db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(query, (days_in_period, start_date, end_date))
+            rows = cur.fetchall()
+            leaderboard_data = [dict(row) for row in rows]
+        
+        return render_template(
+            'leaderboard.html',
+            leaderboard=leaderboard_data,
+            period=period,
+            custom_date=custom_date,
+            start_date=start_date,
+            end_date=end_date
+        )
+
     @app.route('/transactions')
     def transactions():
         # Read filters from query string
@@ -364,6 +418,27 @@ def create_app():
             return jsonify({"ok": False}), 400
         user = db.get_user(token_id) or {}
         return jsonify({"ok": True, "user": user})
+
+    @app.get('/api/admin/version')
+    def api_admin_version():
+        """Return current version and update status information"""
+        current_version = db.get_setting('current_version') or 'unknown'
+        last_update_time = db.get_setting('last_update_time') or 'never'
+        last_update_status = db.get_setting('last_update_status') or 'never'
+        last_update_message = db.get_setting('last_update_message') or 'No update information available'
+        
+        # Shorten commit hash for display
+        if current_version and current_version != 'unknown' and len(current_version) > 8:
+            current_version_short = current_version[:8]
+        else:
+            current_version_short = current_version
+        
+        return jsonify({
+            'current_version': current_version_short,
+            'last_update_time': last_update_time,
+            'last_update_status': last_update_status,
+            'last_update_message': last_update_message
+        })
 
     return app
 

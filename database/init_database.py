@@ -99,7 +99,13 @@ def create_database():
             INSERT OR IGNORE INTO settings (key, value) VALUES 
             ('cleanup_enabled', '1'),
             ('retention_years', '5'),
-            ('last_cleanup', '1970-01-01 00:00:00')
+            ('last_cleanup', '1970-01-01 00:00:00'),
+            ('current_version', 'unknown'),
+            ('previous_version', 'unknown'),
+            ('last_update_check', '1970-01-01 00:00:00'),
+            ('last_update_time', '1970-01-01 00:00:00'),
+            ('last_update_status', 'never'),
+            ('last_update_message', 'No updates performed yet')
         ''')
         
         conn.commit()

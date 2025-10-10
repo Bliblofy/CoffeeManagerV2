@@ -267,5 +267,38 @@ async function pollLastScanned() {
 }
 
 setInterval(pollLastScanned, 2000);
+
+// Poll version information
+async function pollVersionInfo() {
+  try {
+    const resp = await fetch('{{ url_for('api_admin_version') }}');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const versionDiv = document.getElementById('version-info');
+    if (versionDiv) {
+      const statusBadge = {
+        'success': '<span style="color:#34a853;">✓</span>',
+        'rollback': '<span style="color:#fbbc04;">⟲</span>',
+        'error': '<span style="color:#ea4335;">✗</span>',
+        'up_to_date': '<span style="color:#34a853;">✓</span>',
+        'no_internet': '<span style="color:#9aa0a6;">○</span>',
+        'never': '<span style="color:#9aa0a6;">○</span>'
+      };
+      const badge = statusBadge[data.last_update_status] || '<span style="color:#9aa0a6;">?</span>';
+      const timeStr = data.last_update_time !== 'never' && data.last_update_time !== '1970-01-01 00:00:00' 
+        ? data.last_update_time 
+        : 'never';
+      versionDiv.innerHTML = `Version: <code>${data.current_version}</code> ${badge} | Last Update: ${timeStr} | ${data.last_update_message}`;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+pollVersionInfo();
+setInterval(pollVersionInfo, 60000);
 </script>
+
+<div id="version-info" style="margin-top: 2rem; padding: 0.75rem; font-size: 0.85rem; color: #9aa0a6; border-top: 1px solid #1e1e1e; text-align: center;">
+  Loading version info...
+</div>
+
 {% endblock %}
