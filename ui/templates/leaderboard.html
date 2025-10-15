@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Leaderboard - Coffee Manager{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>☕ Coffee Leaderboard</h1>
+  <p style="color: var(--muted);">Rankings based on coffee consumption</p>
+</div>
+
+<div class="card filters">
+  <h2>Period Selection</h2>
+  <div style="display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; align-items: center;">
+    <a href="{{ url_for('leaderboard', period='30days') }}" 
+       class="btn {% if period == '30days' %}{% else %}secondary{% endif %}">
+      Last 30 Days
+    </a>
+    <a href="{{ url_for('leaderboard', period='7days') }}" 
+       class="btn {% if period == '7days' %}{% else %}secondary{% endif %}">
+      Last 7 Days
+    </a>
+    <form method="get" style="display: flex; gap: 8px; align-items: center; margin: 0;">
+      <input type="hidden" name="period" value="custom" />
+      <label style="margin: 0;">
+        <span style="display: inline; margin-right: 4px;">Custom Date:</span>
+        <input type="date" name="date" value="{{ custom_date }}" 
+               style="width: auto; display: inline-block;" />
+      </label>
+      <button type="submit" class="btn {% if period == 'custom' %}{% else %}secondary{% endif %}">
+        View
+      </button>
+    </form>
+  </div>
+  <p style="color: var(--muted); margin-top: 12px; font-size: 14px;">
+    Showing: {{ start_date }} to {{ end_date }}
+  </p>
+</div>
+
+<div class="card">
+  <h2>Rankings</h2>
+  {% if leaderboard %}
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Name</th>
+          <th>Coffee Count</th>
+          <th>Avg per Day</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in leaderboard %}
+        <tr>
+          <td><strong>{{ loop.index }}</strong></td>
+          <td>{{ user.name or user.user_name or user.token_id }}</td>
+          <td>{{ user.coffee_count }}</td>
+          <td>{{ "%.1f"|format(user.avg_per_day) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No coffee consumption recorded for the selected period.</p>
+  {% endif %}
+</div>
+{% endblock %}
+

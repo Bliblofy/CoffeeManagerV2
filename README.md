@@ -2,7 +2,7 @@
 
 ## Project Overview
 This Project allows a standard DeLonghi Magnicifica S to be transformed into an office-worthy Coffee station. To do so the machine is locked which means the buttons can not be pushed before a valid NFC Token is presented to its reader. The Tokens are registerd and linked to a user. This will trigger the Raspberry PI which in turn sets the relay to closed. The NFC Token is registered with a time-stamp into a database on the PI itself. 
-The PI doesn't have to be connected to the internet since it is common in offices that the connection of unmanaged devices is prohibited. To access the data and to create reportings about the consumtion of coffee for each and every user, the PI productes a hidden Wifi Network to connect to. On the network and endpoint is exposed to access a small Web-UI, which can be used to manage the relation of NFC Token to User, lock NFC tokens for future use, create an invoice and send it via eMail and manage the payment state of invoices. Additionally it is possible. Additionally the Web-UI allows for the NFC reader to be set in to the registration state, which allows for new tokens to be registerd into the database. 
+The PI doesn't have to be connected to the internet since it is common in offices that the connection of unmanaged devices is prohibited. On the network and endpoint is exposed to access a small Web-UI, which can be used to manage the relation of NFC Token to User, lock NFC tokens for future use, create an invoice and send it via eMail and manage the payment state of invoices. Additionally it is possible. Additionally the Web-UI allows for the NFC reader to be set in to the registration state, which allows for new tokens to be registerd into the database. 
 
 The system has to differnent database tables, one for the user to token realtion and one for the useage per token. The UI is capable of merging this infroamtion into a report to view the useage of a certain user. 
 
@@ -184,7 +184,7 @@ sudo reboot
 
 # Install all dependencies in one command
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3-pip python3-venv python3-dev python3-spidev python3-rpi.gpio python3-flask hostapd dnsmasq
+sudo apt install -y python3-pip python3-venv python3-dev python3-spidev python3-rpi.gpio python3-flask hostapd
 
 # Navigate to project directory
 cd /home/coffeelover/CoffeeManager
@@ -259,72 +259,14 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable coffee-controller.service coffee-webui.service
 sudo systemctl start coffee-controller.service coffee-webui.service
-```
+
 
 sudo systemctl daemon-reload
 sudo systemctl enable coffee-webui.service
 sudo systemctl start coffee-webui.service
-
-
-### **4. WiFi Management Setup (Smart WiFi with Fallback)**
-```bash
-# Install WiFi management dependencies (corrected package)
-sudo apt install -y wireless-tools
-
-# Make WiFi manager scripts executable
-sudo chmod +x wifi_manager.py setup_wifi.py
-
-# Configure WiFi networks and AP settings
-sudo python3 setup_wifi.py
-
-# Create WiFi manager systemd service (fixed command)
-sudo tee /etc/systemd/system/coffee-wifi-manager.service > /dev/null << 'EOF'
-[Unit]
-Description=Coffee Pi WiFi Manager
-After=network.target
-Wants=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/home/coffeelover/CoffeeManager
-ExecStart=/usr/bin/python3 /home/coffeelover/CoffeeManager/wifi_manager.py
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable and start WiFi manager
-sudo systemctl daemon-reload
-sudo systemctl enable coffee-wifi-manager.service
-sudo systemctl start coffee-wifi-manager.service
 ```
 
-### **5. WiFi Management Commands**
-```bash
-# Check WiFi manager status
-sudo systemctl status coffee-wifi-manager.service
-
-# View WiFi manager logs
-sudo journalctl -u coffee-wifi-manager.service -f
-
-# Reconfigure WiFi settings
-sudo python3 setup_wifi.py
-
-# Manually switch to AP mode
-sudo systemctl stop coffee-wifi-manager.service
-sudo python3 wifi_manager.py
-
-# Check current WiFi status
-iwconfig wlan0
-ip a show wlan0
-```
-
-### **6. Auto-Update System Setup (Optional)**
+### **4. Auto-Update System Setup (Optional)**
 
 The Coffee Manager includes an automatic update system that checks GitHub for updates, applies them, validates the system, and rolls back if tests fail.
 

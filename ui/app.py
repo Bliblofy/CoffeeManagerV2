@@ -386,12 +386,18 @@ def create_app():
             )
             return jsonify([dict(r) for r in cur.fetchall()])
 
+    def normalize_token_id(token_id: str) -> str:
+        """Normalize token ID: remove colons, convert to lowercase"""
+        return token_id.replace(':', '').replace('-', '').lower().strip()
+
     @app.post('/api/admin/user')
     def api_admin_add_user():
         payload = request.get_json(force=True, silent=True) or {}
         token_id = (payload.get('token_id') or '').strip()
         if not token_id:
             return jsonify({"ok": False, "error": "token_id required"}), 400
+        # Normalize token ID format
+        token_id = normalize_token_id(token_id)
         # Ensure user exists (pending), then update allowed fields if provided
         db.add_pending_user(token_id)
         allowed = {k: v for k, v in payload.items() if k in ['user_name','name','email_address','phone_number','barred','active']}
@@ -418,6 +424,14 @@ def create_app():
             return jsonify({"ok": False}), 400
         user = db.get_user(token_id) or {}
         return jsonify({"ok": True, "user": user})
+    
+    @app.delete('/api/admin/user/<token_id>')
+    def api_delete_user(token_id: str):
+        """Delete a user and all associated data"""
+        deleted = db.delete_user(token_id)
+        if not deleted:
+            return jsonify({"ok": False, "error": "User not found or deletion failed"}), 400
+        return jsonify({"ok": True})
 
     @app.get('/api/admin/version')
     def api_admin_version():

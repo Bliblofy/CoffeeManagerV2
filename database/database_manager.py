@@ -146,6 +146,31 @@ class CoffeeDatabaseManager:
         """Bar or unbar a user"""
         return self.update_user(token_id, barred=barred)
     
+    def delete_user(self, token_id: str) -> bool:
+        """Delete a user and all their usage logs"""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            # Delete usage logs first (foreign key constraint)
+            cursor.execute('DELETE FROM usage_log WHERE token_id = ?', (token_id,))
+            # Delete invoice items linked to this user's usage
+            cursor.execute('''
+                DELETE FROM invoice_items 
+                WHERE usage_id IN (SELECT id FROM usage_log WHERE token_id = ?)
+            ''', (token_id,))
+            # Delete invoices for this user
+            cursor.execute('DELETE FROM invoices WHERE token_id = ?', (token_id,))
+            # Delete the user
+            cursor.execute('DELETE FROM users WHERE token_id = ?', (token_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"❌ Error deleting user: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
     # Usage Tracking Methods
     
     def log_coffee_usage(self, token_id: str, coffee_type: str = 'unknown') -> bool:

@@ -61,6 +61,7 @@
         </td>
         <td class="cell-actions">
           <button class="btn btn-small" onclick="enterEdit(this)">Edit</button>
+          <button class="btn btn-small" style="background:#b00020;" onclick="deleteUser(this)">Delete</button>
         </td>
       </tr>
       {% endfor %}
@@ -178,7 +179,7 @@ function renderRowFromUser(tr, u) {
   tr.querySelector('.cell-phone_number').innerHTML = `<span>${u.phone_number || ''}</span>`;
   const state = stateFromFlags(!!u.active, !!u.barred);
   tr.querySelector('.cell-state').innerHTML = `<span data-state="${state}">${state}</span>`;
-  tr.querySelector('.cell-actions').innerHTML = `<button class="btn btn-small" onclick="enterEdit(this)">Edit</button>`;
+  tr.querySelector('.cell-actions').innerHTML = `<button class="btn btn-small" onclick="enterEdit(this)">Edit</button><button class="btn btn-small" style="background:#b00020;" onclick="deleteUser(this)">Delete</button>`;
 }
 
 function appendUserIfNew(u) {
@@ -194,21 +195,28 @@ function appendUserIfNew(u) {
     <td class="cell-email_address"><span>${u.email_address || ''}</span></td>
     <td class="cell-phone_number"><span>${u.phone_number || ''}</span></td>
     <td class="cell-state"><span data-state="${stateFromFlags(!!u.active, !!u.barred)}">${stateFromFlags(!!u.active, !!u.barred)}</span></td>
-    <td class="cell-actions"><button class="btn btn-small" onclick="enterEdit(this)">Edit</button></td>
+    <td class="cell-actions"><button class="btn btn-small" onclick="enterEdit(this)">Edit</button><button class="btn btn-small" style="background:#b00020;" onclick="deleteUser(this)">Delete</button></td>
   `;
   tbody.prepend(tr);
+}
+
+function normalizeTokenId(tokenId) {
+  // Remove colons, dashes, and convert to lowercase
+  return tokenId.replace(/:/g, '').replace(/-/g, '').toLowerCase().trim();
 }
 
 document.getElementById('add-user-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const err = document.getElementById('add-user-error');
   err.style.display = 'none'; err.textContent = '';
-  const token_id = document.getElementById('add_token_id').value.trim();
+  let token_id = document.getElementById('add_token_id').value.trim();
   const user_name = document.getElementById('add_user_name').value.trim();
   const name = document.getElementById('add_name').value.trim();
   const email_address = document.getElementById('add_email').value.trim();
   const phone_number = document.getElementById('add_phone').value.trim();
   if (!token_id) { err.textContent = 'Token ID is required.'; err.style.display = 'block'; return; }
+  // Normalize token ID format (remove colons/dashes, convert to lowercase)
+  token_id = normalizeTokenId(token_id);
   try {
     const resp = await fetch('{{ url_for('api_admin_add_user') }}', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -295,6 +303,30 @@ async function pollVersionInfo() {
 
 pollVersionInfo();
 setInterval(pollVersionInfo, 60000);
+
+async function deleteUser(btn) {
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  const token = tr.dataset.token;
+  if (!confirm(`Are you sure you want to delete user ${token}? This will delete all usage logs, invoices, and cannot be undone!`)) {
+    return;
+  }
+  try {
+    const resp = await fetch(`{{ url_for('api_delete_user', token_id='__T__') }}`.replace('__T__', token), {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'}
+    });
+    if (!resp.ok) {
+      const data = await resp.json();
+      alert('Failed to delete: ' + (data.error || 'Unknown error'));
+      return;
+    }
+    // Remove row from table
+    tr.remove();
+  } catch (e) {
+    alert('Error deleting user: ' + e.message);
+  }
+}
 </script>
 
 <div id="version-info" style="margin-top: 2rem; padding: 0.75rem; font-size: 0.85rem; color: #9aa0a6; border-top: 1px solid #1e1e1e; text-align: center;">
