@@ -1,0 +1,11 @@
+[Unit]
+Description=Pre-sync system time before power cut
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/coffeelover/CoffeeManager/scripts/time_presync.sh
+User=root
+
+[Install]
+WantedBy=multi-user.target

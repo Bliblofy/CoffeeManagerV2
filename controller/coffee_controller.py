@@ -12,6 +12,9 @@ import os
 import sys
 from collections import deque
 
+# Watchdog timeout: reinitialize NFC reader if no scan for this duration (seconds)
+NFC_WATCHDOG_TIMEOUT = 55 * 60  # 55 minutes
+
 # Enable import of database manager from ../database
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'database'))
 from database_manager import CoffeeDatabaseManager
@@ -67,6 +70,8 @@ class CoffeeController:
         self.relay_deactivation_time = 0.0
         # Track last usage time for activation duration logic (epoch seconds)
         self.last_used_time = 0.0
+        # Watchdog: track last NFC scan time to detect reader lockup
+        self.last_scan_time = time.time()
 
         self.setup_gpio()
         self.setup_spi()
@@ -99,6 +104,29 @@ class CoffeeController:
         except Exception as e:
             print(f"SPI setup error: {e}")
             print("Run 'sudo raspi-config' and enable SPI interface")
+
+    def reinit_nfc_reader(self):
+        """Reinitialize the NFC reader to recover from lockup state"""
+        print("Watchdog: Reinitializing NFC reader...")
+        try:
+            # Reinitialize the MFRC522 reader
+            self.nfc_reader = MFRC522()
+            self.last_scan_time = time.time()
+            print("NFC reader reinitialized successfully")
+            return True
+        except Exception as e:
+            print(f"NFC reader reinit failed: {e}")
+            return False
+
+    def restart_script(self):
+        """Restart the entire Python script as last resort"""
+        print("Watchdog: Restarting script...")
+        try:
+            self.cleanup()
+        except Exception:
+            pass
+        # Re-execute the script with the same arguments
+        os.execv(sys.executable, [sys.executable] + sys.argv)
             
     def _prune_invalid_attempts(self, now_epoch: float):
         """Remove invalid-attempt timestamps older than 60 seconds from the deque."""
@@ -267,6 +295,12 @@ class CoffeeController:
                 # Check and deactivate relays if timer expired (non-blocking)
                 self.check_and_deactivate_relays()
                 
+                # Watchdog: reinitialize NFC reader if no scan for too long
+                if time.time() - self.last_scan_time > NFC_WATCHDOG_TIMEOUT:
+                    if not self.reinit_nfc_reader():
+                        # Reinit failed, restart the entire script
+                        self.restart_script()
+                
                 # refresh scan mode setting periodically
                 try:
                     self.scan_mode = self.db.get_setting('scan_mode') == '1'
@@ -277,6 +311,8 @@ class CoffeeController:
                 uid = self.read_nfc_card()
                 
                 if uid:
+                    # Reset watchdog timer on successful scan
+                    self.last_scan_time = time.time()
                     print(f"\nCard detected! UID: {uid}")
                     
                     # Handle master mode toggle first (master always works, even during lockout)
@@ -348,10 +384,10 @@ class CoffeeController:
                         except Exception as e:
                             print(f"Usage log error: {e}")
                         
-                        # Determine activation duration: 90s if unused >30min, else 30s
+                        # Determine activation duration: 90s if unused >180min, else 30s
                         now = time.time()
                         time_since_last = now - self.last_used_time
-                        activation_seconds = 90 if time_since_last > 1800 else 30
+                        activation_seconds = 90 if time_since_last > 10800 else 30
                         self.last_used_time = now  # Update last use time
                         print(f"Activation: {activation_seconds}s (last used {time_since_last:.0f}s ago)")
                         

@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% block title %}Batch Invoice #{{ batch.id }} - Coffee Manager{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Batch Invoice #{{ batch.id }}</h2>
+  <p>Period: <strong>{{ batch.period_start }}</strong> to <strong>{{ batch.period_end }}</strong></p>
+  <p>Batch Date: <strong>{{ batch.batch_date }}</strong></p>
+  <p>Total Users: <strong>{{ batch.total_users }}</strong> | Total Items: <strong>{{ batch.total_items }}</strong></p>
+  <div class="actions">
+    <a class="btn secondary" href="{{ url_for('invoicing') }}">Back</a>
+    <a class="btn" href="{{ mailto }}">Open Mail</a>
+  </div>
+</section>
+
+<section class="card">
+  <h3>Invoice Summary</h3>
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Number of Coffees</th>
+          <th>Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set total_coffees = 0 %}
+        {% set total_price = 0 %}
+        {% for inv in batch.invoices %}
+        {% set coffees = inv.total_items %}
+        {% set price = (price_per_coffee * coffees) | round(2) %}
+        {% set total_coffees = total_coffees + coffees %}
+        {% set total_price = total_price + price %}
+        <tr>
+          <td>{{ inv.name or inv.user_name or inv.token_id }}</td>
+          <td>{{ coffees }}</td>
+          <td>CHF {{ "%.2f"|format(price) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="empty">No invoices in this batch</td></tr>
+        {% endfor %}
+        {% if batch.invoices %}
+        <tr style="background-color: #f0f0f0; font-weight: bold;">
+          <td>Total</td>
+          <td>{{ total_coffees }}</td>
+          <td>CHF {{ "%.2f"|format(total_price) }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h3>Individual Invoices ({{ batch.invoices|length }})</h3>
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>User</th>
+          <th>Period</th>
+          <th>Items</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in batch.invoices %}
+        <tr>
+          <td><a href="{{ url_for('toggle_invoice', invoice_id=inv.id) }}" onclick="event.preventDefault(); this.closest('tr').querySelector('form').submit();">{{ inv.id }}</a></td>
+          <td>{{ inv.name or inv.user_name }} ({{ inv.token_id }})</td>
+          <td>{{ inv.period_start }} – {{ inv.period_end }}</td>
+          <td>{{ inv.total_items }}</td>
+          <td>{{ 'Paid' if inv.paid else 'Unpaid' }}</td>
+          <form method="post" action="{{ url_for('toggle_invoice', invoice_id=inv.id) }}"></form>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">No invoices in this batch</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+

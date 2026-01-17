@@ -404,18 +404,25 @@ class CoffeeDatabaseManager:
 
     # Invoicing helpers
     def get_last_invoice_end(self, token_id: str) -> Optional[str]:
-        """Return the period_end of the last invoice for a user, or None."""
+        """Return the period_end of the last invoice for a user, or None.
+        Checks user's invoices first, then falls back to batch date if user has no invoices."""
         conn = self.get_connection()
         try:
             cur = conn.cursor()
+            # First check for user's last invoice (individual or batch-related)
             cur.execute(
                 "SELECT period_end FROM invoices WHERE token_id = ? ORDER BY period_end DESC LIMIT 1",
                 (token_id,),
             )
             row = cur.fetchone()
-            return row[0] if row else None
+            if row and row[0]:
+                return row[0]
         finally:
             conn.close()
+        
+        # If user has no invoices, check for last batch date (becomes new billing cycle start)
+        last_batch = self.get_last_batch_date()
+        return last_batch if last_batch else None
 
     def get_uninvoiced_usage(self, token_id: str, start_ts: Optional[str], end_ts: Optional[str]) -> List[Dict[str, Any]]:
         """Fetch usage not yet linked to any invoice, within optional [start,end] bounds."""
@@ -440,7 +447,7 @@ class CoffeeDatabaseManager:
         finally:
             conn.close()
 
-    def create_invoice_for_user(self, token_id: str, period_start: str, period_end: str) -> Optional[int]:
+    def create_invoice_for_user(self, token_id: str, period_start: str, period_end: str, batch_id: Optional[int] = None) -> Optional[int]:
         """Create invoice for all uninvoiced usage in [period_start, period_end]. Returns invoice_id or None."""
         conn = self.get_connection()
         try:
@@ -450,7 +457,8 @@ class CoffeeDatabaseManager:
             query = (
                 "SELECT ul.* FROM usage_log ul "
                 "LEFT JOIN invoice_items ii ON ii.usage_id = ul.id "
-                "WHERE ii.id IS NULL AND ul.token_id = ? AND ul.timestamp >= ? AND ul.timestamp <= ? "
+                "WHERE ii.id IS NULL AND ul.token_id = ? "
+                "AND ul.timestamp >= ? AND ul.timestamp <= ? "
                 "ORDER BY ul.timestamp ASC"
             )
             cur.execute(query, (token_id, period_start, period_end))
@@ -458,10 +466,16 @@ class CoffeeDatabaseManager:
             total_items = len(usage_rows)
             if total_items == 0:
                 return None
-            cur.execute(
-                "INSERT INTO invoices (token_id, period_start, period_end, total_items, paid) VALUES (?,?,?,?,0)",
-                (token_id, period_start, period_end, total_items),
-            )
+            if batch_id:
+                cur.execute(
+                    "INSERT INTO invoices (token_id, period_start, period_end, total_items, paid, batch_id) VALUES (?,?,?,?,0,?)",
+                    (token_id, period_start, period_end, total_items, batch_id),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO invoices (token_id, period_start, period_end, total_items, paid) VALUES (?,?,?,?,0)",
+                    (token_id, period_start, period_end, total_items),
+                )
             invoice_id = cur.lastrowid
             for u in usage_rows:
                 cur.execute(
@@ -544,6 +558,200 @@ class CoffeeDatabaseManager:
         except sqlite3.Error as e:
             print(f"❌ Error setting setting '{key}': {e}")
             return False
+        finally:
+            conn.close()
+    
+    def _ensure_batch_tables(self):
+        """Ensure batch_invoices table and batch_id column exist (migration helper)"""
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            # Check if batch_invoices table exists
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='batch_invoices'")
+            if not cur.fetchone():
+                cur.execute('''
+                    CREATE TABLE IF NOT EXISTS batch_invoices (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        batch_date TIMESTAMP NOT NULL,
+                        period_start TIMESTAMP NOT NULL,
+                        period_end TIMESTAMP NOT NULL,
+                        total_users INTEGER NOT NULL DEFAULT 0,
+                        total_items INTEGER NOT NULL DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+            # Check if batch_id column exists in invoices table
+            cur.execute("PRAGMA table_info(invoices)")
+            columns = [col[1] for col in cur.fetchall()]
+            if 'batch_id' not in columns:
+                cur.execute("ALTER TABLE invoices ADD COLUMN batch_id INTEGER REFERENCES batch_invoices(id)")
+            conn.commit()
+        except sqlite3.Error as e:
+            print(f"⚠️ Migration note: {e}")
+        finally:
+            conn.close()
+    
+    def get_last_batch_date(self) -> Optional[str]:
+        """Get the date of the last batch invoice, which becomes the new billing cycle start"""
+        self._ensure_batch_tables()
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT batch_date FROM batch_invoices ORDER BY batch_date DESC LIMIT 1")
+            row = cur.fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+    
+    def create_batch_invoice(self, period_start: Optional[str] = None, period_end: Optional[str] = None) -> Optional[int]:
+        """Create batch invoice for all users. Returns batch_id or None."""
+        from datetime import datetime
+        self._ensure_batch_tables()
+        
+        # Determine period: from last batch date (or last invoice per user) to now
+        if not period_end:
+            period_end = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        if not period_start:
+            # Get the latest batch date, or earliest usage if no batch exists
+            last_batch = self.get_last_batch_date()
+            if last_batch:
+                period_start = last_batch
+            else:
+                conn = self.get_connection()
+                try:
+                    cur = conn.cursor()
+                    cur.execute("SELECT MIN(timestamp) FROM usage_log")
+                    row = cur.fetchone()
+                    period_start = row[0] if row and row[0] else period_end
+                finally:
+                    conn.close()
+        
+        # Create batch_invoice record first
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            batch_date = period_end
+            cur.execute('''
+                INSERT INTO batch_invoices (batch_date, period_start, period_end, total_users, total_items)
+                VALUES (?, ?, ?, 0, 0)
+            ''', (batch_date, period_start, period_end))
+            batch_id = cur.lastrowid
+            conn.commit()
+        except sqlite3.Error as e:
+            print(f"❌ Error creating batch invoice record: {e}")
+            conn.rollback()
+            return None
+        finally:
+            conn.close()
+        
+        # Get all users (not just active/barred) - invoice all users with usage
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT token_id FROM users")
+            users = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+        
+        total_items = 0
+        invoice_ids = []
+        
+        # Create invoice for each user (each creates its own transaction)
+        for user in users:
+            token_id = user['token_id']
+            # Get last invoice end for this user
+            last_end = self.get_last_invoice_end(token_id)
+            
+            # If user has no invoices, use their first usage timestamp (or batch period_start as fallback)
+            if not last_end:
+                conn = self.get_connection()
+                try:
+                    cur = conn.cursor()
+                    cur.execute("SELECT MIN(timestamp) FROM usage_log WHERE token_id = ?", (token_id,))
+                    row = cur.fetchone()
+                    user_start = row[0] if row and row[0] else period_start
+                finally:
+                    conn.close()
+            else:
+                # Use last_end as start - this will include usage from that point forward
+                # The query uses >= so it will include usage at or after last_end
+                user_start = last_end
+            
+            # Ensure we have valid dates
+            if not user_start or not period_end:
+                continue
+            
+            # Create invoice for this user (with batch_id)
+            # create_invoice_for_user will return None if there's no uninvoiced usage
+            invoice_id = self.create_invoice_for_user(token_id, user_start, period_end, batch_id)
+            if invoice_id:
+                invoice_ids.append(invoice_id)
+                # Get item count
+                conn = self.get_connection()
+                try:
+                    cur = conn.cursor()
+                    cur.execute("SELECT total_items FROM invoices WHERE id = ?", (invoice_id,))
+                    row = cur.fetchone()
+                    if row:
+                        total_items += row[0]
+                finally:
+                    conn.close()
+        
+        # Update batch totals
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute('''
+                UPDATE batch_invoices 
+                SET total_users = ?, total_items = ?
+                WHERE id = ?
+            ''', (len(invoice_ids), total_items, batch_id))
+            conn.commit()
+        except sqlite3.Error as e:
+            print(f"❌ Error updating batch totals: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
+        
+        return batch_id if invoice_ids else None
+    
+    def get_batch_invoice(self, batch_id: int) -> Optional[Dict[str, Any]]:
+        """Get batch invoice with all user invoices"""
+        self._ensure_batch_tables()
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM batch_invoices WHERE id = ?", (batch_id,))
+            batch = cur.fetchone()
+            if not batch:
+                return None
+            
+            batch_dict = dict(batch)
+            
+            # Get all invoices in this batch
+            cur.execute('''
+                SELECT i.*, u.name, u.user_name, u.email_address
+                FROM invoices i
+                JOIN users u ON i.token_id = u.token_id
+                WHERE i.batch_id = ?
+                ORDER BY u.name ASC
+            ''', (batch_id,))
+            invoices = [dict(r) for r in cur.fetchall()]
+            batch_dict['invoices'] = invoices
+            
+            return batch_dict
+        finally:
+            conn.close()
+    
+    def list_batch_invoices(self) -> List[Dict[str, Any]]:
+        """List all batch invoices"""
+        self._ensure_batch_tables()
+        conn = self.get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM batch_invoices ORDER BY batch_date DESC")
+            return [dict(r) for r in cur.fetchall()]
         finally:
             conn.close()
 

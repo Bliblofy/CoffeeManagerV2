@@ -2,7 +2,15 @@
 {% block title %}Invoicing - Coffee Manager{% endblock %}
 {% block content %}
 <section class="card">
-  <h2>Create Invoice</h2>
+  <h2>Batch Invoice</h2>
+  <p class="muted">Create a batch invoice for all users covering the period from the last batch invoice (or first usage) until now.</p>
+  <form method="post" action="{{ url_for('create_batch_invoice') }}">
+    <button class="btn" type="submit">Create Batch Invoice</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Create Individual Invoice</h2>
   <p class="muted">Create invoices from the last invoiced moment until now. Only uninvoiced usage will be included.</p>
   <div class="table-responsive">
     <table>
@@ -39,7 +47,39 @@
 </section>
 
 <section class="card">
-  <h2>Invoices</h2>
+  <h2>Batch Invoices</h2>
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Batch Date</th>
+          <th>Period</th>
+          <th>Users</th>
+          <th>Total Items</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for bi in batch_invoices %}
+        <tr>
+          <td><a href="{{ url_for('view_batch_invoice', batch_id=bi.id) }}">{{ bi.id }}</a></td>
+          <td>{{ bi.batch_date }}</td>
+          <td>{{ bi.period_start }} – {{ bi.period_end }}</td>
+          <td>{{ bi.total_users }}</td>
+          <td>{{ bi.total_items }}</td>
+          <td>{{ bi.created_at }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">No batch invoices yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Individual Invoices</h2>
   <div class="table-responsive">
     <table>
       <thead>

@@ -1,0 +1,9 @@
+[Unit]
+Description=Run time pre-sync at 17:55 on weekdays
+
+[Timer]
+OnCalendar=Mon..Fri 17:55:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

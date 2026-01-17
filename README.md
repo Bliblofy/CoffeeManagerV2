@@ -1,5 +1,7 @@
 # DeLonghi Magnifica S RFID Payment System - Developer README
 
+scp -r coffeelover@192.168.1.142:/home/coffeelover/CoffeeManager/ .
+
 ## Project Overview
 This Project allows a standard DeLonghi Magnicifica S to be transformed into an office-worthy Coffee station. To do so the machine is locked which means the buttons can not be pushed before a valid NFC Token is presented to its reader. The Tokens are registerd and linked to a user. This will trigger the Raspberry PI which in turn sets the relay to closed. The NFC Token is registered with a time-stamp into a database on the PI itself. 
 The PI doesn't have to be connected to the internet since it is common in offices that the connection of unmanaged devices is prohibited. On the network and endpoint is exposed to access a small Web-UI, which can be used to manage the relation of NFC Token to User, lock NFC tokens for future use, create an invoice and send it via eMail and manage the payment state of invoices. Additionally it is possible. Additionally the Web-UI allows for the NFC reader to be set in to the registration state, which allows for new tokens to be registerd into the database. 
@@ -18,18 +20,18 @@ The system handles:
 The system implements intelligent activation timing based on usage patterns to optimize machine wake-up performance:
 
 **Normal Operation (30 seconds)**
-- When a valid token is scanned and the last usage was within 25 minutes, the machine activates for 30 seconds
+- When a valid token is scanned and the last usage was within 180 minutes, the machine activates for 30 seconds
 - This provides sufficient time for coffee preparation during regular usage periods
 
 **Extended Wake-up (2 minutes)**  
-- When no valid token has been used for more than 25 minutes, the next scan triggers a 2-minute activation
+- When no valid token has been used for more than 180 minutes, the next scan triggers a 2-minute activation
 - This extended duration accounts for the machine's energy-saving mode, which requires additional time to fully wake up and reach optimal brewing temperature
 
 **Time Accuracy for Offline Operation**
 - The system uses the Raspberry Pi's system clock for timing calculations
 - While offline, clock drift may occur without NTP synchronization
 - For extended offline periods, consider using an RTC (Real-Time Clock) module
-- The 25-minute threshold provides sufficient tolerance for typical clock drift scenarios
+- The 180-minute threshold provides sufficient tolerance for typical clock drift scenarios
 
 **Security Features**
 - Brute-force protection: After 10 invalid token attempts within 60 seconds, the system locks for 5 minutes
@@ -55,7 +57,7 @@ TokenID, TimeStamp
 ### Operation Flow
 1. User taps card on RC522 reader  
 2. System validates token validity.  
-3. LED switches from red (ready) to green (active) and timer starts (30s normal / 2min if >25min since last use)
+3. LED switches from red (ready) to green (active) and timer starts (30s normal / 2min if >180min since last use)
 4. One coffee registered and logged in database with timestamp. 
 5. Coffee type selected through native buttons on the machine. 
 6. Coffee machine brews  
@@ -266,133 +268,7 @@ sudo systemctl enable coffee-webui.service
 sudo systemctl start coffee-webui.service
 ```
 
-### **4. Auto-Update System Setup (Optional)**
-
-The Coffee Manager includes an automatic update system that checks GitHub for updates, applies them, validates the system, and rolls back if tests fail.
-
-#### New Installation
-```bash
-# Install the auto-updater service and timer
-sudo cp /home/coffeelover/CoffeeManager/systemd/coffee-updater.service /etc/systemd/system/
-sudo cp /home/coffeelover/CoffeeManager/systemd/coffee-updater.timer /etc/systemd/system/
-
-# Enable and start the updater timer
-sudo systemctl daemon-reload
-sudo systemctl enable coffee-updater.timer
-sudo systemctl start coffee-updater.timer
-
-# Verify timer is active
-sudo systemctl status coffee-updater.timer
-sudo systemctl list-timers coffee-updater.timer
-```
-
-#### Upgrading to Auto-Updater if System was Setup Before 10th Oct. 2025
-
-If your Coffee Manager was installed before the auto-updater feature was added, you need to update the database schema to include version tracking fields.
-
-```bash
-# Navigate to project directory
-cd /home/coffeelover/CoffeeManager
-
-# Pull latest changes from GitHub
-git pull origin main
-
-# Add version tracking fields to existing database
-python3 << 'EOF'
-import sqlite3
-import os
-
-db_path = os.path.join('database', 'coffee_manager.db')
-conn = sqlite3.connect(db_path)
-cursor = conn.cursor()
-
-# Add version tracking settings if they don't exist
-version_settings = [
-    ('current_version', 'unknown'),
-    ('previous_version', 'unknown'),
-    ('last_update_check', '1970-01-01 00:00:00'),
-    ('last_update_time', '1970-01-01 00:00:00'),
-    ('last_update_status', 'never'),
-    ('last_update_message', 'No updates performed yet')
-]
-
-for key, value in version_settings:
-    cursor.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
-        (key, value)
-    )
-
-conn.commit()
-conn.close()
-print("✓ Database upgraded successfully with version tracking fields")
-EOF
-
-# Set current version to current commit
-CURRENT_COMMIT=$(git rev-parse HEAD)
-python3 -c "
-from database.database_manager import CoffeeDatabaseManager
-db = CoffeeDatabaseManager()
-db.set_setting('current_version', '$CURRENT_COMMIT')
-db.set_setting('previous_version', '$CURRENT_COMMIT')
-print('✓ Current version set to: $CURRENT_COMMIT')
-"
-
-# Install the auto-updater service and timer
-sudo cp /home/coffeelover/CoffeeManager/systemd/coffee-updater.service /etc/systemd/system/
-sudo cp /home/coffeelover/CoffeeManager/systemd/coffee-updater.timer /etc/systemd/system/
-
-# Enable and start the updater timer
-sudo systemctl daemon-reload
-sudo systemctl enable coffee-updater.timer
-sudo systemctl start coffee-updater.timer
-
-# Verify timer is active
-sudo systemctl status coffee-updater.timer
-
-echo "✓ Auto-updater installed and activated"
-echo "✓ Version info will appear in Administration page"
-```
-
-**Verification:**
-1. Open the web interface at `http://192.168.1.142:8080/administration`
-2. Scroll to the bottom - you should see version information
-3. Check updater logs: `sudo journalctl -u coffee-updater.timer -f`
-
-#### Auto-Update Features
-- **Scheduled Updates**: Runs 10 minutes after boot and daily at 2:00 AM
-- **Network Resilient**: Gracefully handles no internet connection
-- **Validation Tests**: Runs comprehensive tests after updates
-- **Automatic Rollback**: Reverts to previous version if tests fail
-- **Version Tracking**: View current version and update status in Admin UI
-
-#### Manual Update Commands
-```bash
-# Check for updates manually
-sudo systemctl start coffee-updater.service
-
-# View update logs
-sudo journalctl -u coffee-updater.service -n 50
-
-# Check last update status
-sudo journalctl -u coffee-updater.service | tail -20
-
-# Disable auto-updates
-sudo systemctl stop coffee-updater.timer
-sudo systemctl disable coffee-updater.timer
-
-# Re-enable auto-updates
-sudo systemctl enable coffee-updater.timer
-sudo systemctl start coffee-updater.timer
-```
-
-#### Update Status Indicators
-The Administration page displays version information at the bottom:
-- **✓ (Green)**: Update successful or system up to date
-- **⟲ (Yellow)**: Update was rolled back due to test failures
-- **✗ (Red)**: Update error occurred
-- **○ (Gray)**: No internet connection or no updates performed
-
-### **7. Verification**
+### **4. Verification**
 ```bash
 # Check all services are running
 sudo systemctl status coffee-controller.service coffee-webui.service coffee-wifi-manager.service
@@ -403,9 +279,6 @@ curl http://localhost:8080
 # Check WiFi connection
 iwconfig wlan0
 ip a show wlan0
-
-# Check auto-updater timer (if enabled)
-sudo systemctl status coffee-updater.timer
 ```
 
 ## **Key Redundancies Eliminated:**

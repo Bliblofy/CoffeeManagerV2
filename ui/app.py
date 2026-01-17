@@ -163,7 +163,8 @@ def create_app():
             )
             users = [dict(r) for r in cur.fetchall()]
         invoices = db.list_invoices()
-        return render_template('invoicing.html', users=users, invoices=invoices)
+        batch_invoices = db.list_batch_invoices()
+        return render_template('invoicing.html', users=users, invoices=invoices, batch_invoices=batch_invoices)
 
     @app.route('/invoicing/create/<token_id>', methods=['POST'])
     def create_invoice(token_id):
@@ -433,26 +434,79 @@ def create_app():
             return jsonify({"ok": False, "error": "User not found or deletion failed"}), 400
         return jsonify({"ok": True})
 
-    @app.get('/api/admin/version')
-    def api_admin_version():
-        """Return current version and update status information"""
-        current_version = db.get_setting('current_version') or 'unknown'
-        last_update_time = db.get_setting('last_update_time') or 'never'
-        last_update_status = db.get_setting('last_update_status') or 'never'
-        last_update_message = db.get_setting('last_update_message') or 'No update information available'
+    @app.post('/invoicing/batch')
+    def create_batch_invoice():
+        """Create a batch invoice for all users"""
+        from datetime import datetime
+        batch_id = db.create_batch_invoice()
+        if not batch_id:
+            return render_template('message.html', title='No Usage', message='No uninvoiced usage found for any users.')
+        batch = db.get_batch_invoice(batch_id)
+        if not batch:
+            return render_template('message.html', title='Error', message='Batch invoice created but could not be retrieved.')
+        try:
+            price_per_coffee = float(db.get_setting('price_per_coffee') or '0')
+        except Exception:
+            price_per_coffee = 0.0
+        return render_template('batch_invoice_detail.html', batch=batch, mailto=_build_batch_mailto(batch), price_per_coffee=price_per_coffee)
+    
+    def _build_batch_mailto(batch):
+        """Build mailto link for batch invoice with table format"""
+        try:
+            price_per_coffee = float(db.get_setting('price_per_coffee') or '0')
+        except Exception:
+            price_per_coffee = 0.0
         
-        # Shorten commit hash for display
-        if current_version and current_version != 'unknown' and len(current_version) > 8:
-            current_version_short = current_version[:8]
-        else:
-            current_version_short = current_version
+        # Build HTML table for email body
+        table_rows = []
+        total_coffees = 0
+        for inv in batch.get('invoices', []):
+            name = inv.get('name') or inv.get('user_name') or inv.get('token_id', 'Unknown')
+            coffees = inv.get('total_items', 0)
+            price = round(price_per_coffee * float(coffees), 2)
+            total_coffees += coffees
+            table_rows.append(f"<tr><td>{name}</td><td>{coffees}</td><td>CHF {price:.2f}</td></tr>")
         
-        return jsonify({
-            'current_version': current_version_short,
-            'last_update_time': last_update_time,
-            'last_update_status': last_update_status,
-            'last_update_message': last_update_message
-        })
+        total_price = round(price_per_coffee * float(total_coffees), 2)
+        
+        html_table = f"""
+<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+<tr style="background-color: #f0f0f0;"><th>Name</th><th>Number of Coffees</th><th>Price</th></tr>
+{''.join(table_rows)}
+<tr style="background-color: #f0f0f0; font-weight: bold;"><td>Total</td><td>{total_coffees}</td><td>CHF {total_price:.2f}</td></tr>
+</table>
+"""
+        
+        subject_tpl = db.get_setting('invoice_subject') or 'Batch Coffee Invoice {period_start} - {period_end}'
+        subject = subject_tpl.format(period_start=batch['period_start'], period_end=batch['period_end'])
+        
+        body = f"""
+Dear Coffee Manager,
+
+This is the batch invoice for the billing period {batch['period_start']} until {batch['period_end']}.
+
+{html_table}
+
+Price per coffee: CHF {price_per_coffee:.2f}
+
+Thank you!
+"""
+        
+        import urllib.parse
+        # For mailto, we need to URL encode the HTML
+        return f"mailto:?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}"
+    
+    @app.get('/invoicing/batch/<int:batch_id>')
+    def view_batch_invoice(batch_id: int):
+        """View a batch invoice"""
+        batch = db.get_batch_invoice(batch_id)
+        if not batch:
+            return render_template('message.html', title='Not Found', message='Batch invoice not found')
+        try:
+            price_per_coffee = float(db.get_setting('price_per_coffee') or '0')
+        except Exception:
+            price_per_coffee = 0.0
+        return render_template('batch_invoice_detail.html', batch=batch, mailto=_build_batch_mailto(batch), price_per_coffee=price_per_coffee)
 
     return app
 
