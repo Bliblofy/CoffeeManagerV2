@@ -12,8 +12,13 @@ import os
 import sys
 from collections import deque
 
-# Watchdog timeout: reinitialize NFC reader if no scan for this duration (seconds)
-NFC_WATCHDOG_TIMEOUT = 55 * 60  # 55 minutes
+# NFC Reader Reset Configuration
+# Periodic reset: proactively reset NFC reader to prevent lockup (30 minutes)
+NFC_PERIODIC_RESET_INTERVAL = 30 * 60  # 30 minutes
+# Watchdog timeout: fallback if no successful scan for this duration (15 minutes)
+NFC_WATCHDOG_TIMEOUT = 15 * 60  # 15 minutes
+# RST pin for RC522 hardware reset
+NFC_RST_PIN = 25  # GPIO 25 (Pin 22)
 
 # Enable import of database manager from ../database
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'database'))
@@ -72,6 +77,8 @@ class CoffeeController:
         self.last_used_time = 0.0
         # Watchdog: track last NFC scan time to detect reader lockup
         self.last_scan_time = time.time()
+        # Periodic reset: track last NFC reader reset time
+        self.last_nfc_reset_time = time.time()
 
         self.setup_gpio()
         self.setup_spi()
@@ -93,8 +100,12 @@ class CoffeeController:
         for pin in self.LED_PINS.values():
             GPIO.setup(pin, GPIO.OUT)
             GPIO.output(pin, GPIO.LOW)   # LEDs start OFF
+        
+        # Configure NFC RST pin for hardware reset capability
+        GPIO.setup(NFC_RST_PIN, GPIO.OUT)
+        GPIO.output(NFC_RST_PIN, GPIO.HIGH)  # RST is active LOW, keep HIGH for normal operation
             
-        print("GPIO pins configured for relay control and LED indicators")
+        print("GPIO pins configured for relay control, LED indicators, and NFC reset")
         
     def setup_spi(self):
         """Initialize SPI for RC522 NFC reader"""
@@ -105,18 +116,39 @@ class CoffeeController:
             print(f"SPI setup error: {e}")
             print("Run 'sudo raspi-config' and enable SPI interface")
 
-    def reinit_nfc_reader(self):
-        """Reinitialize the NFC reader to recover from lockup state"""
-        print("Watchdog: Reinitializing NFC reader...")
+    def reinit_nfc_reader(self, reason="watchdog"):
+        """Reinitialize the NFC reader with hardware reset to recover from lockup state"""
+        print(f"NFC Reset ({reason}): Reinitializing NFC reader with hardware reset...")
         try:
-            # Reinitialize the MFRC522 reader
+            # Step 1: Hardware reset via RST pin (active LOW pulse)
+            GPIO.output(NFC_RST_PIN, GPIO.LOW)
+            time.sleep(0.1)  # Hold reset for 100ms
+            GPIO.output(NFC_RST_PIN, GPIO.HIGH)
+            time.sleep(0.1)  # Wait for RC522 to stabilize
+            
+            # Step 2: Reinitialize the MFRC522 reader (creates new SPI connection)
             self.nfc_reader = MFRC522()
-            self.last_scan_time = time.time()
-            print("NFC reader reinitialized successfully")
+            
+            # Step 3: Update timing trackers
+            now = time.time()
+            self.last_scan_time = now
+            self.last_nfc_reset_time = now
+            
+            print(f"NFC reader reinitialized successfully ({reason})")
             return True
         except Exception as e:
             print(f"NFC reader reinit failed: {e}")
             return False
+    
+    def is_relay_active(self):
+        """Check if relays are currently active (user is using the machine)"""
+        # Relays are active if deactivation timer is set and hasn't expired yet
+        if self.relay_deactivation_time > 0 and time.time() < self.relay_deactivation_time:
+            return True
+        # Also active during master mode
+        if self.master_mode:
+            return True
+        return False
 
     def restart_script(self):
         """Restart the entire Python script as last resort"""
@@ -283,6 +315,7 @@ class CoffeeController:
     def run(self):
         """Main loop for NFC reading and relay control"""
         print("Coffee Controller Started")
+        print(f"NFC reset: periodic every {NFC_PERIODIC_RESET_INTERVAL // 60} min, watchdog after {NFC_WATCHDOG_TIMEOUT // 60} min idle")
         print("Present NFC/RFID card to reader...")
         print("Press Ctrl+C to exit")
         print("-" * 50)
@@ -295,11 +328,28 @@ class CoffeeController:
                 # Check and deactivate relays if timer expired (non-blocking)
                 self.check_and_deactivate_relays()
                 
-                # Watchdog: reinitialize NFC reader if no scan for too long
-                if time.time() - self.last_scan_time > NFC_WATCHDOG_TIMEOUT:
-                    if not self.reinit_nfc_reader():
-                        # Reinit failed, restart the entire script
-                        self.restart_script()
+                # NFC Reader maintenance: periodic reset and watchdog
+                now = time.time()
+                
+                # Periodic proactive reset (every 30 min) - only when relays are not active
+                if now - self.last_nfc_reset_time > NFC_PERIODIC_RESET_INTERVAL:
+                    if not self.is_relay_active():
+                        print(f"Periodic NFC reset triggered (last reset {(now - self.last_nfc_reset_time) / 60:.1f} min ago)")
+                        if not self.reinit_nfc_reader(reason="periodic"):
+                            # Reinit failed, restart the entire script
+                            self.restart_script()
+                    else:
+                        print("Periodic NFC reset deferred: relays currently active")
+                
+                # Watchdog: reinitialize NFC reader if no scan for too long (fallback)
+                elif now - self.last_scan_time > NFC_WATCHDOG_TIMEOUT:
+                    if not self.is_relay_active():
+                        print(f"Watchdog NFC reset triggered (no scan for {(now - self.last_scan_time) / 60:.1f} min)")
+                        if not self.reinit_nfc_reader(reason="watchdog"):
+                            # Reinit failed, restart the entire script
+                            self.restart_script()
+                    else:
+                        print("Watchdog NFC reset deferred: relays currently active")
                 
                 # refresh scan mode setting periodically
                 try:

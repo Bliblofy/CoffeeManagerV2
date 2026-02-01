@@ -38,6 +38,12 @@ The system implements intelligent activation timing based on usage patterns to o
 - Master token can always bypass security lockouts and toggle master mode
 - All timing calculations work across multiple days and system restarts
 
+**NFC Reader Maintenance**
+- The RC522 NFC reader can occasionally lock up due to SPI bus issues
+- **Periodic Reset**: Every 30 minutes, the reader is proactively reset via hardware RST pin toggle to prevent lockups
+- **Watchdog Reset**: If no successful scan occurs for 15 minutes, a reset is triggered as a fallback
+- **Relay-Safe**: Both reset mechanisms are deferred while relays are active to avoid interrupting a user's coffee session
+
 ---
 
 ## Database schema
@@ -372,6 +378,8 @@ CREATE TABLE invoice_items (
 - [ ] System recovers from power loss
 - [ ] Master mode toggle works
 - [ ] Invoice creation and email generation
+- [ ] NFC reader periodic reset (check logs after 30+ min uptime)
+- [ ] NFC reset deferred during active relay period
 
 ### Safety Notes
 - Test relays without coffee machine first

@@ -306,6 +306,8 @@ Hardware control and main loop. Key behaviors:
 - **Brute-force Protection**: 10 invalid attempts in 60s → 5min lockout
 - **Scan Mode**: Creates pending users instead of granting access
 - **LED States**: `ready` (red), `active` (green), `master` (both), `off`
+- **NFC Maintenance**: Periodic hardware reset (RST pin) every 30min + watchdog after 15min idle
+- **Relay-Safe Reset**: NFC resets are deferred while relays are active
 
 ---
 
@@ -318,6 +320,17 @@ Hardware control and main loop. Key behaviors:
 | Security lockout trigger | 10 invalid attempts in 60s |
 | Security lockout duration | 5 minutes |
 | Scan freshness window (API) | 5 seconds |
+| NFC periodic reset interval | 30 minutes |
+| NFC watchdog timeout | 15 minutes |
+
+### NFC Reader Maintenance
+
+The NFC reader (RC522) can lock up due to SPI bus issues. Two mechanisms prevent this:
+
+1. **Periodic Reset**: Every 30 minutes, the reader is proactively reset via hardware RST pin toggle
+2. **Watchdog Reset**: If no successful scan occurs for 15 minutes, a reset is triggered
+
+Both mechanisms defer the reset if relays are currently active to avoid interrupting a user's session.
 
 ---
 
@@ -464,5 +477,5 @@ sudo journalctl -u coffee-updater.service | tail -20
 
 ---
 
-*Last updated: January 2026*
+*Last updated: February 2026*
 
